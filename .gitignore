@@ -129,4 +129,7 @@ dmypy.json
 .pyre/
 
 # Subfolders used for other stuff
-Research Papers/
+first_data_explore/
+CenterNet-OAP/
+Data/
+PaperImplementations/
