@@ -1,0 +1,3 @@
+conda install -c pytorch pytorch torchvision cudatoolkit=11.3
+conda install -c conda-forge ipywidgets
+conda install tqdm cffi h5py scipy pytz imageio
