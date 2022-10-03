@@ -4,25 +4,31 @@ import matplotlib.pyplot as plt
 from helpers import to_numpy
 
 def target_to_keypoints(target_dict):
-    return target_dict['keypoints'][:,:2]
-def batch_target_to_keypoints(batch_target_dict):
+    return target_dict['keypoints'][0,:,:2]
+
+def batch_target_to_keypoints(batch_targets):
+
     batch_keypoints = []
-    for item in batch_target_dict['keypoints']:
-        batch_keypoints.append(item[:,:2])
+    for target_dict in batch_targets:
+        keypoints = target_dict['keypoints']
+        batch_keypoints.append(keypoints[:,:2])
     return batch_keypoints
     
 # # plot images and corresponding keypoints for a subset of the batch
 def plot_batch_keypoints(batch,figsize=(10,10)):
+    # imgs and targets is a list of tensors and list of dicts, respectively
     imgs,targets = batch
     keypoints = batch_target_to_keypoints(targets)
-
+    calibrationquality = [target_dict['calibration_quality'] for target_dict in targets]
     # loop to plot all images and their keypoints
     if len(imgs) >= 9:
         fig,axes = plt.subplots(ncols=3,nrows=3,figsize=figsize)
         # choose random subset of images and keypoints
         choices = torch.randperm(len(imgs))[:9]
-        imgs = imgs[choices]
+        imgs = [imgs[i] for i in choices]
         keypoints = [keypoints[i] for i in choices]
+        calibrationquality = [calibrationquality[i] for i in choices]
+        # calibrationquality = calibrationquality[choices]
     else:
         fig,axes = plt.subplots(ncols=len(imgs),nrows=1,figsize=figsize)
 
@@ -30,3 +36,4 @@ def plot_batch_keypoints(batch,figsize=(10,10)):
         ax.imshow(to_numpy(imgs[i]))
         ax.plot(*keypoints[i].T,'r.')
         ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+        ax.set_title(f'Quality: {calibrationquality[i].detach().cpu():.2f}')

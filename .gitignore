@@ -129,10 +129,9 @@ dmypy.json
 .pyre/
 
 # Subfolders used for other stuff
-first_data_explore/
-CenterNet-OAP/
 Data/
 PaperImplementations/
 Data-new/
 .vscode/
 Data-reannotate/
+Models/model_states/
