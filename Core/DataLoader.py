@@ -28,9 +28,28 @@ class GoalCalibrationDataset(Dataset):
         calibration_json = json.load(open(calibration_path,'r',encoding='latin'))
         keypoints = calibration_json['GoalCalibrationPoints']
         calibration_quality = calibration_json['CalibrationQuality']
+        session_type = calibration_json.get('SessionType')
         
         # change order of keypoints so the top left point is first and bottom right point is last
-        keypoints = sorted(keypoints, key=lambda x: np.sum(x))
+        # keypoints = sorted(keypoints, key=lambda x: np.sum(x))
+
+        # make bounding boxes
+        ##########################
+        expand_x = 0.05 # expand boxes by this percentage
+        expand_y = 0.02
+        box_topleft = np.min(keypoints,axis=0)
+        # print(f'box top left: {box_topleft}')
+        box_topleft_expand = box_topleft - np.array([img.shape[1]*expand_y,img.shape[0]*expand_x])
+        box_topleft_keepinIm = np.array([val if val > 0 else 1 for val in box_topleft_expand])
+
+        box_botright = np.max(keypoints,axis=0)
+        box_botright_expand = box_botright + np.array([img.shape[1]*expand_y,img.shape[0]*expand_x])
+        shapeperm = np.transpose(img,axes=(1,0,2)).shape
+        box_botright_keepinIm = np.array([val if val <= shapeperm[i] else shapeperm[i]-1 for i,val in enumerate(box_botright_expand)])
+
+        bboxes = np.concatenate((box_topleft_keepinIm,box_botright_keepinIm))
+        bboxes = torch.tensor(bboxes)[None,:]
+        ##########################
 
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
         for kpt in keypoints:
@@ -43,7 +62,11 @@ class GoalCalibrationDataset(Dataset):
         img_tensor = F.to_tensor(img)
         # convert keypoints to tensor
         keypoints_tensor = torch.tensor(keypoints, dtype=torch.float32)
-        bboxes = torch.cat((keypoints_tensor[0][:2],keypoints_tensor[3][:2]))[None,:]#.unsqueeze(0), # needs to be added for using keypoint r-cnn. I made temporary boxes now that just use the keypoints top-left and bot-right. dims Needs to be (N,4), hence the unsqueeze
+
+        
+
+
+        # bboxes = torch.cat((keypoints_tensor[0][:2],keypoints_tensor[3][:2]))[None,:]#.unsqueeze(0), # needs to be added for using keypoint r-cnn. I made temporary boxes now that just use the keypoints top-left and bot-right. dims Needs to be (N,4), hence the unsqueeze
         target_dict = {
             'boxes': bboxes,
             'labels': torch.tensor([1 for _ in bboxes], dtype=torch.int64), # class label hard-coded to 1 always, as we are only interested in the football goals

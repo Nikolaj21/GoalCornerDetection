@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from helpers import to_numpy
+from Core.helpers import to_numpy
 import cv2
 
 def target_to_keypoints(target_dict):
@@ -12,7 +12,8 @@ def batch_target_to_keypoints(batch_targets):
     batch_keypoints = []
     for target_dict in batch_targets:
         keypoints = target_dict['keypoints']
-        batch_keypoints.append(keypoints[:,:2])
+        for kps in keypoints:
+            batch_keypoints.append(kps[:,:2])
     return batch_keypoints
     
 # # plot images and corresponding keypoints for a subset of the batch
@@ -35,17 +36,17 @@ def plot_batch_keypoints(batch,figsize=(10,10)):
 
     for i,ax in enumerate(np.ravel(axes)):
         ax.imshow(to_numpy(imgs[i]))
+        for kp in keypoints[i]:
+            ax.plot()
         ax.plot(*keypoints[i].T,'r.')
         ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
         ax.set_title(f'Quality: {calibrationquality[i].detach().cpu():.2f}')
 
 
 
-keypoints_classes_ids2names = {0: 'top-left', 1: 'bot-left', 2: 'top-right', 3: 'bot-right'}
-
 def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=None, keypoints_original=None):
     fontsize = 18
-
+    keypoints_classes_ids2names = {0: 'top-left', 1: 'top-right', 2: 'bot-left', 3: 'bot-right'}
     for bbox in bboxes:
         start_point = (bbox[0], bbox[1])
         end_point = (bbox[2], bbox[3])
@@ -61,6 +62,7 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
         plt.imshow(image)
 
     else:
+        keypoints_classes_ids2names = {0: 'top-left', 1: 'bot-left', 2: 'top-right', 3: 'bot-right'}
         for bbox in bboxes_original:
             start_point = (bbox[0], bbox[1])
             end_point = (bbox[2], bbox[3])
@@ -71,10 +73,10 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
                 image_original = cv2.circle(image_original, tuple(kp), 5, (255,0,0), 10)
                 image_original = cv2.putText(image_original, " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
 
-        f, ax = plt.subplots(1, 2, figsize=(40, 20))
+        f, ax = plt.subplots(1, 2, figsize=(40, 40))
 
         ax[0].imshow(image_original)
-        ax[0].set_title('Original image', fontsize=fontsize)
+        ax[0].set_title('Original results', fontsize=fontsize)
 
         ax[1].imshow(image)
-        ax[1].set_title('Transformed image', fontsize=fontsize)
+        ax[1].set_title('New results', fontsize=fontsize)
