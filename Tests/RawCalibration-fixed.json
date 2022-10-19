@@ -1,0 +1,249 @@
+{
+    "AppName": "TrackMan",
+    "AppVersion": "1.0.24",
+    "RadarSerial": "20280001",
+    "Gps": {
+        "State": "Ok",
+        "Timestamp": "2022-08-30T16:55:04+00:00",
+        "Latitude": 51.0369075,
+        "Longitude": 6.994947833333333,
+        "Altitude": 45.1,
+        "PDOP": 1.33,
+        "IsFixValid": true
+    },
+    "ImageMetadata": {
+        "CameraCaptureProfile": "1",
+        "CameraCalibration": {
+            "Model": "Pinhole_OpenCV",
+            "Parameters": {
+                "Creator": [
+                    "TM_tools"
+                ],
+                "FocalLength": [
+                    2738.1959609483624,
+                    2738.1959609483624
+                ],
+                "PrincipalPoint": [
+                    2144.8673494428426,
+                    1548.7742655979414
+                ],
+                "DistortionParameters": [
+                    0.0,
+                    0.0,
+                    2.9994495778854864,
+                    0.4547115666845063,
+                    -0.049606276227365485,
+                    3.3681049529987934,
+                    1.4202095827789514,
+                    -0.0754279564094664
+                ],
+                "Rotation": [
+                    -0.0016324468326574804,
+                    -0.0008278919212189799,
+                    -0.0001604141362570959
+                ],
+                "Translation": [
+                    -0.008130000904202461,
+                    0.1599999964237213,
+                    -0.1599999964237213
+                ]
+            }
+        },
+        "ActualSize": {
+            "Width": 4208,
+            "Height": 3120
+        },
+        "Timestamp": "2022-08-30T16:50:37.071826Z",
+        "ProjectionAngles": {
+            "Vertical": -0.1947787445225638,
+            "Horizontal": 0.0008726646259970879
+        }
+    },
+    "HorizontalAngle": 0.0008726646259970879,
+    "VerticalAngle": 0.1947787445225638,
+    "CalibrationQuality": 93.15620210583364,
+    "GoalCalibrationPoints": [
+        [
+            747.6211547851562,
+            1243.07373046875
+        ],
+        [
+            3596.674072265625,
+            1274.273681640625
+        ],
+        [
+            658.9474487304688,
+            2218.484375
+        ],
+        [
+            3675.4951171875,
+            2195.494873046875
+        ]
+    ],
+    "GoalCorners3DPositions": [
+        [
+            0.0,
+            2.440000057220459,
+            -3.6500000953674316
+        ],
+        [
+            0.0,
+            2.440000057220459,
+            3.6500000953674316
+        ],
+        [
+            0.0,
+            0.0,
+            -3.6500000953674316
+        ],
+        [
+            0.0,
+            0.0,
+            3.6500000953674316
+        ]
+    ],
+    "SessionType": 1,
+    "FieldType": 0,
+    "RadarLocation": {
+        "X": -10.0,
+        "Y": 2.0,
+        "Z": 0.0
+    },
+    "NarrowImageMetadata": null,
+    "SiteCalibrationInput": {
+        "CalibrationInputAttributes": {
+            "SiteCalibrationId": "aaf48182-9864-4ffb-ac7f-7fefdb123b5b",
+            "TargetWorldCoordsList": [
+                [
+                    0.0,
+                    2.440000057220459,
+                    -3.6500000953674316
+                ],
+                [
+                    0.0,
+                    2.440000057220459,
+                    3.6500000953674316
+                ],
+                [
+                    0.0,
+                    0.0,
+                    -3.6500000953674316
+                ],
+                [
+                    0.0,
+                    0.0,
+                    3.6500000953674316
+                ]
+            ],
+            "TargetImageCoordsList": [
+                [
+                    747.6211547851562,
+                    1243.07373046875
+                ],
+                [
+                    3596.674072265625,
+                    1274.273681640625
+                ],
+                [
+                    658.9474487304688,
+                    2218.484375
+                ],
+                [
+                    3675.4951171875,
+                    2195.494873046875
+                ]
+            ],
+            "TrackingUnitApproxPosition": [
+                -10.0,
+                2.0,
+                0.0
+            ],
+            "Metadata": {
+                "ActualSize": {
+                    "Height": 3120,
+                    "Width": 4208
+                },
+                "CameraCalibration": {
+                    "Model": "Pinhole_OpenCV",
+                    "Parameters": {
+                        "Creator": [
+                            "TM_tools"
+                        ],
+                        "DistortionParameters": [
+                            0.0,
+                            0.0,
+                            2.9994495778854864,
+                            0.4547115666845063,
+                            -0.049606276227365485,
+                            3.3681049529987934,
+                            1.4202095827789514,
+                            -0.0754279564094664
+                        ],
+                        "FocalLength": [
+                            2738.1959609483624,
+                            2738.1959609483624
+                        ],
+                        "PrincipalPoint": [
+                            2144.8673494428426,
+                            1548.7742655979414
+                        ],
+                        "Rotation": [
+                            -0.0016324468326574804,
+                            -0.0008278919212189799,
+                            -0.0001604141362570959
+                        ],
+                        "Translation": [
+                            -0.008130000904202461,
+                            0.1599999964237213,
+                            -0.1599999964237213
+                        ]
+                    }
+                },
+                "CameraCaptureProfile": "1",
+                "ProjectionAngles": {
+                    "Horizontal": 0.0008726646259970879,
+                    "Vertical": -0.1947787445225638
+                },
+                "Timestamp": "2022-08-30T16:50:37.071826+00:00"
+            }
+        }
+    },
+    "SiteCalibrationOutput": {
+        "Tracking": {
+            "TrackingUnits": [
+                {
+                    "SiteCalibrationId": "aaf48182-9864-4ffb-ac7f-7fefdb123b5b",
+                    "Radar": {
+                        "Settings": {
+                            "CanConfirmRadarTracks": true
+                        },
+                        "Calibration": {
+                            "PositionSCS": [
+                                -5.932775584415227,
+                                0.3138290597368889,
+                                -0.16258110351950536
+                            ],
+                            "Offsets": {
+                                "ProjectionAngles": {
+                                    "Horizontal": 0.0,
+                                    "Vertical": 0.0
+                                },
+                                "Range": null,
+                                "OrientationACS": {
+                                    "Pan": null,
+                                    "Tilt": null,
+                                    "Roll": null
+                                }
+                            },
+                            "OrientationSCS": {
+                                "Pan": -0.029476191855092117,
+                                "Tilt": null,
+                                "Roll": null
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
