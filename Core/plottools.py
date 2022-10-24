@@ -17,11 +17,11 @@ def batch_target_to_keypoints(batch_targets):
     return batch_keypoints
     
 # # plot images and corresponding keypoints for a subset of the batch
-def plot_batch_keypoints(batch,figsize=(10,10)):
+def plot_batch_keypoints(batch,figsize=(10,10), show_qualityfactor=False):
     # imgs and targets is a list of tensors and list of dicts, respectively
     imgs,targets = batch
     keypoints = batch_target_to_keypoints(targets)
-    calibrationquality = [target_dict['calibration_quality'] for target_dict in targets]
+    calibrationquality = [target_dict.get('calibration_quality') for target_dict in targets]
     # loop to plot all images and their keypoints
     if len(imgs) >= 9:
         fig,axes = plt.subplots(ncols=3,nrows=3,figsize=figsize)
@@ -29,8 +29,7 @@ def plot_batch_keypoints(batch,figsize=(10,10)):
         choices = torch.randperm(len(imgs))[:9]
         imgs = [imgs[i] for i in choices]
         keypoints = [keypoints[i] for i in choices]
-        calibrationquality = [calibrationquality[i] for i in choices]
-        # calibrationquality = calibrationquality[choices]
+        calibrationquality = [calibrationquality[i] for i in choices if show_qualityfactor]
     else:
         fig,axes = plt.subplots(ncols=len(imgs),nrows=1,figsize=figsize)
 
@@ -40,7 +39,8 @@ def plot_batch_keypoints(batch,figsize=(10,10)):
             ax.plot()
         ax.plot(*keypoints[i].T,'r.')
         ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
-        ax.set_title(f'Quality: {calibrationquality[i].detach().cpu():.2f}')
+        if show_qualityfactor:
+            ax.set_title(f'Quality: {calibrationquality[i].detach().cpu():.2f}')
 
 
 
@@ -62,16 +62,16 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
         plt.imshow(image)
 
     else:
-        keypoints_classes_ids2names = {0: 'top-left', 1: 'bot-left', 2: 'top-right', 3: 'bot-right'}
         for bbox in bboxes_original:
             start_point = (bbox[0], bbox[1])
             end_point = (bbox[2], bbox[3])
             image_original = cv2.rectangle(image_original.copy(), start_point, end_point, (0,255,0), 2)
-        
+
+        keypoints_classes_ids2names_original= {0: 'top-left', 1: 'bot-left', 2: 'top-right', 3: 'bot-right'}
         for kps in keypoints_original:
             for idx, kp in enumerate(kps):
                 image_original = cv2.circle(image_original, tuple(kp), 5, (255,0,0), 10)
-                image_original = cv2.putText(image_original, " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
+                image_original = cv2.putText(image_original, " " + keypoints_classes_ids2names_original[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
 
         f, ax = plt.subplots(1, 2, figsize=(40, 40))
 

@@ -3,6 +3,7 @@ import numpy as np
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
 from Core.torchhelpers.utils import collate_fn
+# import albumentations as A # Library for augmentations
 
 # helper / utility functions
 
@@ -55,3 +56,18 @@ def split_data_train_test(DatasetClass,validation_split=0.75,batch_size=1, shuff
                                                     collate_fn=collate_fn)
     print(f'###################\nTotal size of dataset: {dataset_size}\nTrain data --> Size: {len(train_loader.sampler)}, batch size: {train_loader.batch_size}\nValidation data --> Size: {len(validation_loader.sampler)}, batch size: {validation_loader.batch_size}')
     return train_loader,validation_loader
+
+
+def train_transform():
+    '''
+    Makes data augmentation transformations
+    '''
+    return A.Compose([
+        A.Sequential([
+            A.RandomRotate90(p=1), # Random rotation of an image by 90 degrees zero or more times
+            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, brightness_by_max=True, always_apply=False, p=1), # Random change of brightness & contrast
+        ], p=1)
+    ],
+    keypoint_params=A.KeypointParams(format='xy'), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
+    bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bboxes_labels']) # Bboxes should have labels, read more at https://albumentations.ai/docs/getting_started/bounding_boxes_augmentation/
+    )

@@ -9,14 +9,11 @@ tqdm
 pycocotools
 
 
-# conda requirements
+# conda requirements for conda environment gcdhpc
 conda create --name gcd python=3.9.13 # initial making of conda environment
 conda install -c pytorch pytorch torchvision cudatoolkit=11.3
 conda install jupyter
 
-
-
-conda install -c conda-forge ipywidgets
-conda install tqdm cffi h5py scipy pytz imageio
+conda install tqdm cffi h5py scipy pytz imageio seaborn
 conda install -c conda-forge pycocotools
 conda install -c anaconda scikit-learn
