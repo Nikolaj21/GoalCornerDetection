@@ -1,25 +1,24 @@
+import sys
+sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
+sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Core/torchhelpers')
 import os
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from Core.helpers import to_torch,to_numpy,split_data_train_test
-from Core.DataLoader import GoalCalibrationDataset
-from Core.plottools import target_to_keypoints,batch_target_to_keypoints,plot_batch_keypoints
+from Core.DataLoader import GoalCalibrationDatasetNEW
+from Core.plottools import target_to_keypoints,batch_target_to_keypoints,plot_batch_keypoints,visualize
 from utils import DATA_DIR
 
 from torchvision.models.detection import keypointrcnn_resnet50_fpn, KeypointRCNN_ResNet50_FPN_Weights
 from torchsummary import summary
-import sys
-sys.path.append(r'C:\Users\Nikolaj\OneDrive - Danmarks Tekniske Universitet\DTU\Kandidat\MasterThesis\Code\GoalCornerDetection\Core\torchhelpers')
 # https://github.com/pytorch/vision/tree/main/references/detection
 from Core.torchhelpers import transforms, utils, engine, train
 from Core.torchhelpers.utils import collate_fn
 from Core.torchhelpers.engine import train_one_epoch, evaluate
-
-
-
-
+from torchvision.models.detection.rpn import AnchorGenerator
 
 if __name__ == '__main__':
 
@@ -28,31 +27,21 @@ if __name__ == '__main__':
     print(f'Running on {device}')
 
     # initialize an instance of the dataloader
-    # GoalData = GoalCalibrationDataset(DATA_DIR,transforms=get_transform(train=False))
-    GoalData = GoalCalibrationDataset(DATA_DIR,transforms=None)
-
+    GoalData = GoalCalibrationDatasetNEW(DATA_DIR,transforms=None)
     # put dataloader into pytorch dataloader function. Batch size chosen to be 14 as it 854 is divisible by this
-    train_loader,validation_loader = split_data_train_test(GoalData,validation_split=0.25,batch_size=2,shuffle_dataset=False,shuffle_seed=None,data_amount=0.1)
-
-
-
+    train_loader,validation_loader = split_data_train_test(GoalData,validation_split=0.25,batch_size=2,shuffle_dataset=True,shuffle_seed=None,data_amount=1)
 
     # Setting hyper-parameters
     num_classes = 2 # 1 class (goal) + background
-
-    from torchvision.models.detection.rpn import AnchorGenerator
     anchor_generator = AnchorGenerator(sizes=(32, 64, 128, 256, 512), aspect_ratios=(0.25, 0.5, 0.75, 1.0, 2.0, 3.0, 4.0))
-
-    # weights = KeypointRCNN_ResNet50_FPN_Weights.DEFAULT
-    # transforms = weights.transforms()
+    
     model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=4,rpn_anchor_generator=anchor_generator)
     model.to(device)
-    # print(model)
+    print(f'Model moved to device: {device}')
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=0.001, momentum=0.9, weight_decay=0.0005)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.3)
-    num_epochs = 2
-
+    num_epochs = 1
 
     # gpu test
     for epoch in range(num_epochs):

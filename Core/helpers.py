@@ -53,5 +53,5 @@ def split_data_train_test(DatasetClass,validation_split=0.75,batch_size=1, shuff
     validation_loader = DataLoader(DatasetClass, batch_size=batch_size,
                                                     sampler=val_sampler,
                                                     collate_fn=collate_fn)
-    print(f'Total size of dataset: {dataset_size}\nSize of train data: {len(train_loader.sampler)}\nSize of validation data: {len(validation_loader.sampler)}')
+    print(f'###################\nTotal size of dataset: {dataset_size}\nTrain data --> Size: {len(train_loader.sampler)}, batch size: {train_loader.batch_size}\nValidation data --> Size: {len(validation_loader.sampler)}, batch size: {validation_loader.batch_size}')
     return train_loader,validation_loader
