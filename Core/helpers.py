@@ -7,7 +7,7 @@ from Core.torchhelpers.utils import collate_fn
 
 # helper / utility functions
 
-def to_numpy(tensor):
+def im_to_numpy(tensor):
     '''
     Converts an image tensor to numpy. Mainly for plotting purposes
     '''
@@ -15,7 +15,17 @@ def to_numpy(tensor):
         return tensor.permute(1,2,0).detach().cpu().numpy()
     else:
         print('could not convert to np array. Check type of input')
-        return tensor
+        pass
+
+def to_numpy(tensor):
+    '''
+    Convert torch tensor to numpy array and make sure it's detached and on cpu
+    '''
+    if torch.is_tensor(tensor):
+        return tensor.detach().cpu().numpy()
+    else:
+        print('could not convert to np array. Check type of input')
+        pass
 
 def to_torch(nparray):
     '''
