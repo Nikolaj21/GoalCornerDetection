@@ -61,3 +61,79 @@ def train(model, optimizer, loss_fun, trainloader, testloader, epochs=10,show_ev
 
     print('finished training successfully')
     return (train_accuracy,test_accuracy)
+
+
+
+#We define the training as a function so we can easily re-use it.
+def train_thomas(model, optimizer, train_loader, val_loader, num_epochs=1, modelNr=1, dataAug=False):
+    out_dict = {'test_loss': [],
+              'train_loss': [],
+              'train_mean_loss': [],
+              'test_mean_loss': []}
+    model.train()
+    for epoch in range(num_epochs):        
+        #For each epoch
+        start = time.time()
+        train_correct = 0
+        train_loss = []
+        for minibatch_no, (data, boxes, labels) in enumerate(train_loader): 
+            # model.train()  
+            # make the data fit faster-rcnn
+            targets = []
+            for i in range(len(data)):
+                d = {}
+                d['boxes'] = boxes[i]
+                d['labels'] = torch.tensor([labels[i]])
+                targets.append(d)
+
+            # move to gpu
+            data = data.to(device)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+            #Zero the gradients computed for each weight
+            optimizer.zero_grad()
+            #Forward pass your image through the network
+            loss_dict = model(data, targets)
+            #Compute the loss
+            losses = sum(loss for loss in loss_dict.values())
+            #Backward pass through the network
+            losses.backward()
+            #Update the weights
+            optimizer.step()
+            train_loss.append(losses.item())
+            out_dict['train_loss'].append(losses.item())
+
+            torch.cuda.empty_cache()
+
+        #Comput the test accuracy
+        test_loss = []
+        test_correct = 0
+        for data, boxes, labels in val_loader:
+            # model.train()
+            targets = []
+            for i in range(len(data)):
+                d = {}
+                d['boxes'] = boxes[i]
+                d['labels'] = torch.tensor([labels[i]])
+                targets.append(d)
+
+            data = data.to(device)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+
+            with torch.no_grad():
+                loss_dict = model(data, targets)
+
+            #Compute the loss
+            losses = sum(loss for loss in loss_dict.values())
+            test_loss.append(losses.item())
+            out_dict['test_loss'].append(losses.item())
+            torch.cuda.empty_cache()
+
+        torch.save(model.state_dict(), f"../work/outputs/{DATASET}/model_v{modelNr}/Faster-RCNN_v{modelNr}epoch{epoch + 1}{'_dataaug' if dataAug else '' }.pt")
+        
+        out_dict['train_mean_loss'].append(np.mean(train_loss))
+        out_dict['test_mean_loss'].append(np.mean(test_loss))
+        print(f"Epoch: {epoch + 1} took {((time.time() - start) / 60):.3f} min \t",
+            f"Loss train: {np.mean(train_loss):.3f}\t",
+              f"Loss val: {np.mean(test_loss):.3f}\t")
+
+    return out_dict

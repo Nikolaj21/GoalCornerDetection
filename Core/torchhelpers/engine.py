@@ -81,8 +81,10 @@ def evaluate(model, data_loader, device):
     model.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = "Test:"
-
+    print(f'timing function get_coco_api_from_dataset')
+    timer_for_fun = time.time()
     coco = get_coco_api_from_dataset(data_loader.dataset)
+    print(f'we made it here now. Time of function: {time.time()-timer_for_fun}')
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types)
 
@@ -96,7 +98,7 @@ def evaluate(model, data_loader, device):
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
         model_time = time.time() - model_time
-
+        
         res = {target["image_id"].item(): output for target, output in zip(targets, outputs)}
         evaluator_time = time.time()
         coco_evaluator.update(res)

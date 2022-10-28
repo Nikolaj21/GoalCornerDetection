@@ -137,7 +137,7 @@ def visualize_results(model, images, device, plotdim, image_original=None, bboxe
                 images[i] = cv2.putText(images[i].copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
 
     if image_original is None and keypoints_original is None:
-        _,axes = plt.subplots(plotdim[0],plotdim[1], figsize=(40,40))
+        _,axes = plt.subplots(plotdim[0],plotdim[1], figsize=(40,40), layout="constrained")
         for i,ax in enumerate(axes.ravel()):
             ax.imshow(images[i])
 

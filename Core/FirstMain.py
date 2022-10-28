@@ -20,8 +20,7 @@ from Core.torchhelpers.utils import collate_fn
 from Core.torchhelpers.engine import train_one_epoch, evaluate
 from torchvision.models.detection.rpn import AnchorGenerator
 
-if __name__ == '__main__':
-
+def main():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     # device = torch.device('cpu')
     print(f'Running on {device}')
@@ -41,12 +40,58 @@ if __name__ == '__main__':
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=0.001, momentum=0.9, weight_decay=0.0005)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.3)
-    num_epochs = 10
+    num_epochs = 1
 
-    # gpu test
+    out_dict = {
+        # total losses in each epoch
+        'loss_keypoint_train': [],
+        'loss_keypoint_val': [],
+        'loss_all_train': [],
+        'loss_all_val': [],
+        # losses in each epoch
+        'loss_keypoint_train_mean': [],
+        'loss_keypoint_val_mean': [],
+        'loss_all_train_mean': [],
+        'loss_all_val_mean': []
+    }
+    # Run training loop
     for epoch in range(num_epochs):
-        train_one_epoch(model, optimizer, train_loader, device, epoch, print_freq=10)
-        lr_scheduler.step()
-        evaluate(model, validation_loader, device)
+        metric_logger = train_one_epoch(model, optimizer, train_loader, device, epoch, print_freq=100)
 
-    torch.save(model.state_dict(), r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/model_states/first_train/kp_rcnn_weights_10epochs_newdata_bs4.pth')
+        # Add all losses for a given epoch to out_dict
+        out_dict['loss_all_train'].append(metric_logger.meters['loss'].total)
+        out_dict['loss_all_train_mean'].append(metric_logger.meters['loss'].global_avg)
+        out_dict['loss_keypoint_train'].append(metric_logger.meters['loss_keypoint'].total)
+        out_dict['loss_keypoint_train_mean'].append(metric_logger.meters['loss_keypoint'].global_avg)
+
+        lr_scheduler.step()
+
+####################### loop for validating
+        # # Compute the validation accuracy
+        # for images, targets in validation_loader:
+        #     model.eval()
+        #     with torch.no_grad():
+        #         loss_dict = model(images, targets)
+        #     losses = sum(loss for loss in loss_dict.values())
+        #     # reduce losses over all GPUs for logging purposes
+        #     loss_dict_reduced = utils.reduce_dict(loss_dict)
+        #     losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+
+        # out_dict['loss_all_val'].append(losses_reduced)
+        # out_dict['loss_all_val_mean'].append()
+
+        # torch.cuda.empty_cache()
+##################################
+
+        coco_evaluator = evaluate(model, validation_loader, device)
+        # coco_evaluator.coco_eval['bbox'].stats
+        # coco_evaluator.coco_eval['keypoints'].stats
+
+
+    print('we are done')    
+
+    # torch.save(model.state_dict(), r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/model_states/first_train/kp_rcnn_weights_50epochs_newdata_bs4.pth')
+
+
+if __name__ == '__main__':
+    main()
