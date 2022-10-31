@@ -134,5 +134,4 @@ PaperImplementations/
 Data-new/
 .vscode/
 Data-reannotate/
-Models/model_states/
-Models/model_prints/
+Models/

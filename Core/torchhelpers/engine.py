@@ -23,7 +23,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
         lr_scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=warmup_factor, total_iters=warmup_iters
         )
-
+    print(f'\nRunning training loop!')
     for images, targets in metric_logger.log_every(data_loader, print_freq, header):
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
@@ -84,7 +84,7 @@ def evaluate(model, data_loader, device):
     print(f'timing function get_coco_api_from_dataset')
     timer_for_fun = time.time()
     coco = get_coco_api_from_dataset(data_loader.dataset)
-    print(f'we made it here now. Time of function: {time.time()-timer_for_fun}')
+    print(f'we made it here now. Time of function get_coco_api_from_dataset: {time.time()-timer_for_fun} sec')
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types)
 

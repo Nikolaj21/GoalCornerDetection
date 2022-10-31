@@ -7,6 +7,7 @@ import torchvision
 import transforms as T
 from pycocotools import mask as coco_mask
 from pycocotools.coco import COCO
+import time
 
 
 class FilterAndRemapCocoCategories:
@@ -196,13 +197,15 @@ def convert_to_coco_api(ds):
 
 
 def get_coco_api_from_dataset(dataset):
-    for _ in range(10):
+    timer_for_fun = time.time()
+    for i in range(10):
         if isinstance(dataset, torchvision.datasets.CocoDetection):
             break
         if isinstance(dataset, torch.utils.data.Subset):
             dataset = dataset.dataset
     if isinstance(dataset, torchvision.datasets.CocoDetection):
         return dataset.coco
+    print(f'Time of get_coco_api_from_dataset, everything before return: {time.time()-timer_for_fun}')
     return convert_to_coco_api(dataset)
 
 
