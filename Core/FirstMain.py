@@ -8,14 +8,14 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from Core.helpers import split_data_train_test
-from Core.DataLoader import GoalCalibrationDatasetNEW
+from Core.DataLoader import GoalCalibrationDataset
 from utils import DATA_DIR
 
-from torchvision.models.detection import keypointrcnn_resnet50_fpn, KeypointRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection import keypointrcnn_resnet50_fpn
 from torchsummary import summary
 # https://github.com/pytorch/vision/tree/main/references/detection
 from Core.torchhelpers import transforms, utils, engine, train
-from Core.torchhelpers.utils import reduce_dict,SmoothedValue
+from Core.torchhelpers.utils import reduce_dict, SmoothedValue
 from Core.torchhelpers.engine import train_one_epoch, evaluate
 from torchvision.models.detection.rpn import AnchorGenerator
 
@@ -51,7 +51,7 @@ def main():
     print(f'Running on {device}')
 
     # initialize an instance of the dataloader
-    GoalData = GoalCalibrationDatasetNEW(DATA_DIR,transforms=None)
+    GoalData = GoalCalibrationDataset(DATA_DIR,transforms=None)
     # put dataloader into pytorch dataloader function. Batch size chosen to be 14 as it 854 is divisible by this
     train_loader,validation_loader = split_data_train_test(GoalData,validation_split=0.25,batch_size=4,shuffle_dataset=True,shuffle_seed=None,data_amount=1)
 
@@ -65,11 +65,11 @@ def main():
     params = [p for p in model.parameters() if p.requires_grad]
     # optimizer = torch.optim.SGD(params, lr=0.001, momentum=0.9, weight_decay=0.0005)
     optimizer = torch.optim.Adam(params, lr=0.001, weight_decay=0.0005)
-
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.3)
-    num_epochs = 5
-    print_freq = 50
-    model_name = f'kp_rcnn_v1_{num_epochs}epochs'
+    num_epochs = 50
+    print_freq = 100
+    ### Set model_name, save path ###
+    model_name = f'kp_rcnn_v2_{num_epochs}epochs'
 
     out_dict = {
         # total losses in each epoch
@@ -83,8 +83,10 @@ def main():
         'loss_all_train_mean': [],
         'loss_all_val_mean': []
     }
-    # Run training loop
+
+    ###################### Training
     for epoch in range(num_epochs):
+        # Run training loop
         metric_logger = train_one_epoch(model, optimizer, train_loader, device, epoch, print_freq)
 
         # Add all losses for a given epoch to out_dict
@@ -96,6 +98,7 @@ def main():
         # take step in optimizer scheduler, updating current learning rate
         lr_scheduler.step()
 
+        # Run testing loop
         metric_logger_val = validate_epoch(model, validation_loader, device, epoch, print_freq)
         out_dict['loss_all_val'].append(metric_logger_val.meters['loss'].total)
         out_dict['loss_all_val_mean'].append(metric_logger_val.meters['loss'].global_avg)
@@ -103,9 +106,10 @@ def main():
         out_dict['loss_keypoint_val_mean'].append(metric_logger_val.meters['loss_keypoint'].global_avg)
 
     # get evaluation metrics, average precison and average recall for different IoUs
-    evaluate(model, validation_loader, device)
-    print('\nFINISHED TRAINING :)')    
+    # evaluate(model, validation_loader, device)
+    print('\nFINISHED TRAINING :)')
 
+    ############################################ Save losses and weights
     import json
     save_folder = f'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/{model_name}/'
     if os.path.exists(save_folder) is False:

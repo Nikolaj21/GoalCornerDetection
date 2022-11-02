@@ -8,8 +8,9 @@ import torchvision.transforms as transforms
 import numpy as np
 import os
 
-class GoalCalibrationDataset(Dataset):
-    def __init__(self,datapath, transforms=None):
+# data loader for the data before it was re-annotated
+class GoalCalibrationDatasetOLD(Dataset):
+    def __init__(self,datapath, transforms=None, filter=False):
         self.img_list = sorted(glob.glob(datapath + '/*/*.jpg'))
         self.calibration_list = sorted(glob.glob(datapath + '/*/*.txt'))
         self.transforms = transforms
@@ -87,8 +88,8 @@ class GoalCalibrationDataset(Dataset):
 
 
 
-
-class GoalCalibrationDatasetNEW(Dataset):
+## data loader for the newly annotated dataset
+class GoalCalibrationDataset(Dataset):
     def __init__(self,datapath, transforms=None):
 
         self.img_list = sorted(glob.glob(datapath + '/*/*.jpg'))
@@ -110,9 +111,9 @@ class GoalCalibrationDatasetNEW(Dataset):
                 # add image paths that are of type 'freekick'
                 self.img_list_filtered.append(temp_img_path)
         print(f'All images: {len(self.img_list)}')
-        print(f'All annotations: {len(self.annotation_list)}')
+        # print(f'All annotations: {len(self.annotation_list)}')
         print(f'Filtered images: {len(self.img_list_filtered)}')
-        print(f'Filtered annotations: {len(self.annotation_list_filtered)}')
+        # print(f'Filtered annotations: {len(self.annotation_list_filtered)}')
         ############################
 
         self.transforms = transforms

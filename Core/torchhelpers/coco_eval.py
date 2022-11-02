@@ -20,7 +20,7 @@ class CocoEvaluator:
         self.iou_types = iou_types
         self.coco_eval = {}
         for iou_type in iou_types:
-            self.coco_eval[iou_type] = COCOeval(coco_gt, iouType=iou_type)
+            # self.coco_eval[iou_type] = COCOeval(coco_gt, iouType=iou_type)
             ###########################
             # changes made to make model work with 4 keypoints instead of the default of 17
             coco_eval = COCOeval(coco_gt, iouType=iou_type)

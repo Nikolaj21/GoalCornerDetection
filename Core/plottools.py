@@ -45,7 +45,7 @@ def plot_batch_keypoints(batch,figsize=(10,10), show_qualityfactor=False):
 
 
 
-def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=None, keypoints_original=None):
+def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=None, keypoints_original=None, title_old='Original Results', title_new='New results',pred_score=None):
 
     fontsize = 18
     keypoints_classes_ids2names = {0: 'top-left', 1: 'top-right', 2: 'bot-left', 3: 'bot-right'}
@@ -79,10 +79,10 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
         f, ax = plt.subplots(1, 2, figsize=(40, 40))
 
         ax[0].imshow(image_original)
-        ax[0].set_title('Original results', fontsize=fontsize)
+        ax[0].set_title(title_old, fontsize=fontsize)
 
         ax[1].imshow(image)
-        ax[1].set_title('New results', fontsize=fontsize)
+        ax[1].set_title(f'{title_new}, Prediction confidence: {pred_score:.4f}', fontsize=fontsize)
 
 
 def visualize_results(model, images, device, plotdim, image_original=None, bboxes_original=None, keypoints_original=None):
