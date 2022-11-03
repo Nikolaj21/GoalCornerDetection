@@ -7,8 +7,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from Core.helpers import split_data_train_test
-from Core.DataLoader import GoalCalibrationDataset
+from Core.helpers import split_data_train_test, train_transform
+from Core.DataLoader import GoalCalibrationDataset,GoalCalibrationDatasetAUG
 from utils import DATA_DIR
 
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
@@ -44,16 +44,15 @@ def validate_epoch(model, train_loader, device, epoch, print_freq):
 #################################
 
 
-
 def main():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     # device = torch.device('cpu')
     print(f'Running on {device}')
 
     # initialize an instance of the dataloader
-    GoalData = GoalCalibrationDataset(DATA_DIR,transforms=None)
+    GoalData = GoalCalibrationDatasetAUG(DATA_DIR,transforms=train_transform())
     # put dataloader into pytorch dataloader function. Batch size chosen to be 14 as it 854 is divisible by this
-    train_loader,validation_loader = split_data_train_test(GoalData,validation_split=0.25,batch_size=4,shuffle_dataset=True,shuffle_seed=None,data_amount=1)
+    train_loader,validation_loader = split_data_train_test(GoalData,validation_split=0.25,batch_size=4,shuffle_dataset=True,shuffle_seed=None,data_amount=1,num_workers=6, pin_memory=True) # pin_memory was false before running last training
 
     # Setting hyper-parameters
     num_classes = 2 # 1 class (goal) + background
@@ -69,7 +68,7 @@ def main():
     num_epochs = 50
     print_freq = 100
     ### Set model_name, save path ###
-    model_name = f'kp_rcnn_v2_{num_epochs}epochs'
+    model_name = f'kp_rcnn_v2_{num_epochs}epochs_dataaug'
 
     out_dict = {
         # total losses in each epoch

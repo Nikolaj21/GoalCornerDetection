@@ -7,6 +7,7 @@ from torchvision.transforms import functional as F
 import torchvision.transforms as transforms
 import numpy as np
 import os
+from PIL import Image
 
 # data loader for the data before it was re-annotated
 class GoalCalibrationDatasetOLD(Dataset):
@@ -142,36 +143,7 @@ class GoalCalibrationDataset(Dataset):
             kpt.append(1)
 
         if self.transforms: # not fixed yet per 24-10-2022
-            # img = cv2.resize(img,(4208,3120)) # cv2 shape order is opposite (W,H) instead of normal (H,W)
-
-            # Converting keypoints from [x,y,visibility]-format to [x, y]-format + Flattening nested list of keypoints            
-            # For example, if we have the following list of keypoints for three objects (each object has two keypoints):
-            # [[obj1_kp1, obj1_kp2], [obj2_kp1, obj2_kp2], [obj3_kp1, obj3_kp2]], where each keypoint is in [x, y]-format            
-            # Then we need to convert it to the following list:
-            # [obj1_kp1, obj1_kp2, obj2_kp1, obj2_kp2, obj3_kp1, obj3_kp2]
-            keypoints_original_flattened = [el[0:2] for kp in keypoints_original for el in kp]
-            
-            # Apply augmentations
-            transformed = self.transform(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original_flattened)
-            img = transformed['image']
-            bboxes = transformed['bboxes']
-            
-            # Unflattening list transformed['keypoints']
-            # For example, if we have the following list of keypoints for three objects (each object has two keypoints):
-            # [obj1_kp1, obj1_kp2, obj2_kp1, obj2_kp2, obj3_kp1, obj3_kp2], where each keypoint is in [x, y]-format
-            # Then we need to convert it to the following list:
-            # [[obj1_kp1, obj1_kp2], [obj2_kp1, obj2_kp2], [obj3_kp1, obj3_kp2]]
-            keypoints_transformed_unflattened = np.reshape(np.array(transformed['keypoints']), (-1,2,2)).tolist()
-
-            # Converting transformed keypoints from [x, y]-format to [x,y,visibility]-format by appending original visibilities to transformed coordinates of keypoints
-            keypoints = []
-            for o_idx, obj in enumerate(keypoints_transformed_unflattened): # Iterating over objects
-                obj_keypoints = []
-                for k_idx, kp in enumerate(obj): # Iterating over keypoints in each object
-                    # kp - coordinates of keypoint
-                    # keypoints_original[o_idx][k_idx][2] - original visibility of keypoint
-                    obj_keypoints.append(kp + [keypoints_original[o_idx][k_idx][2]])
-                keypoints.append(obj_keypoints)
+            pass
 
         # convert image to tensor
         img_tensor = F.to_tensor(img)
@@ -192,3 +164,92 @@ class GoalCalibrationDataset(Dataset):
 
 
         return img_tensor,target_dict
+    
+    
+############################################################
+############################################################
+## data loader with data augmentation
+class GoalCalibrationDatasetAUG(Dataset):
+    def __init__(self,datapath, transforms=None):
+
+        self.img_list = sorted(glob.glob(datapath + '/*/*.jpg'))
+        self.annotation_list = sorted(glob.glob(datapath + '/FootballGoalCorners/AnnotationFiles/*.json'))
+        ### remove image paths from list if they aren't of category 'free kick'
+        self.img_list_filtered, self.annotation_list_filtered = filter_data(self.img_list,self.annotation_list)
+
+        self.transforms = transforms
+
+    def  __len__(self):
+        return len(self.annotation_list_filtered)
+
+    def __getitem__(self, idx):
+        img_path = self.img_list_filtered[idx]
+        annotation_path = self.annotation_list_filtered[idx]
+
+        img_original = cv2.imread(img_path)
+        img_original = cv2.cvtColor(img_original, cv2.COLOR_BGR2RGB) 
+        
+        # load keypoint annotations (and other relevant metrics)
+        annotation_json = json.load(open(annotation_path,'r',encoding='latin'))
+        keypoints_original = [[corner['CenterU'],corner['CenterV']] for corner in annotation_json['Annotations']['0'][:4]]
+        box_json = annotation_json['Annotations']['0'][4]
+        Cu,Cv,w,h = box_json['CenterU'], box_json['CenterV'], box_json['Width'], box_json['Height']
+        bboxes_original = [[(2*Cu-w)/2, (2*Cv-h)/2, w+(2*Cu-w)/2, h+(2*Cv-h)/2]]
+        radii = torch.tensor([corner['Radius'] for corner in annotation_json['Annotations']['0'][:4]])
+
+        # All objects are goal
+        bboxes_labels_original = ['goal' for _ in bboxes_original]
+
+        if self.transforms:
+
+            # Apply augmentations
+            transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
+            img = transformed['image']
+            bboxes = transformed['bboxes']
+            keypoints = np.array(transformed['keypoints']).tolist()
+        
+        else:
+            img, bboxes, keypoints = img_original, bboxes_original, keypoints_original 
+
+        # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
+        for kpt in keypoints:
+            kpt.append(1)
+
+        # convert image to tensor
+        img_tensor = F.to_tensor(img)
+        # convert keypoints to tensor
+        keypoints_tensor = torch.tensor(keypoints, dtype=torch.float32)
+        # convert bboxes to tensor
+        bboxes_tensor = torch.tensor(bboxes, dtype=torch.float32)
+
+        target_dict = {
+            'boxes': bboxes_tensor,
+            'labels': torch.tensor([1 for _ in bboxes_tensor], dtype=torch.int64), # class label hard-coded to 1 always, as we are only interested in the football goals
+            'image_id': torch.tensor([idx]), # save id of image for reference
+            'keypoints': keypoints_tensor[None,:],
+            'radii': radii,
+            'area': (bboxes_tensor[:, 3] - bboxes_tensor[:, 1]) * (bboxes_tensor[:, 2] - bboxes_tensor[:, 0]),
+            'iscrowd': torch.zeros(len(bboxes), dtype=torch.int64)
+        }
+
+        return img_tensor,target_dict
+
+def filter_data(img_list,annotation_list):
+    ### remove image paths from list if they aren't of category 'free kick'
+    img_list_filtered = []
+    annotation_list_filtered = []
+    for path in annotation_list:
+        annotation_json = json.load(open(path,'r',encoding='latin'))
+        if annotation_json['Annotations']['0'][-1]['Attributes']['calibration_type'] == 'freekick':
+            # add only annotation paths of type 'freekick'
+            annotation_list_filtered.append(path)
+            # make correct path for images
+            splitpath = path.split('/')
+            basepath = '/'.join(splitpath[:-3])
+            img_name = splitpath[-1].split('.')[0]
+            temp_img_path = os.path.join(basepath, img_name, img_name + '.jpg')
+            # add image paths that are of type 'freekick'
+            img_list_filtered.append(temp_img_path)
+    print(f'All images: {len(img_list)}')
+    print(f'Filtered images: {len(img_list_filtered)}')
+    return img_list_filtered, annotation_list_filtered

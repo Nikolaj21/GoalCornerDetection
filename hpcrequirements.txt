@@ -18,3 +18,4 @@ conda install jupyter
 conda install tqdm cffi h5py scipy pytz imageio seaborn
 conda install -c conda-forge pycocotools
 conda install -c anaconda scikit-learn
+conda install -c conda-forge albumentations

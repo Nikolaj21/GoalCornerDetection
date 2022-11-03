@@ -1,9 +1,11 @@
-# %%
+
+
+#%%
 import matplotlib.pyplot as plt
 import numpy as np
 import json
 
-with open(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/kp_rcnn_v2_20epochs/losses.json','r') as file:
+with open(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/kp_rcnn_v2_50epochs/losses.json','r') as file:
     loss_dict = json.load(file)
 # %%
 fig,ax = plt.subplots(1,1,figsize=(5,5))
@@ -28,4 +30,4 @@ ax.set_xticks(np.arange(2,21,2))
 ax.set_xlabel('epoch')
 ax.set_ylabel('loss')
 
-# %%
+#%% 
