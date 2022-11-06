@@ -23,8 +23,10 @@ class CocoEvaluator:
             # self.coco_eval[iou_type] = COCOeval(coco_gt, iouType=iou_type)
             ###########################
             # changes made to make model work with 4 keypoints instead of the default of 17
+            # makes a COCOeval object for each iou_type, in this case bbox and keypoints
             coco_eval = COCOeval(coco_gt, iouType=iou_type)
             coco_eval.params.kpt_oks_sigmas = np.array([.5, .5, .5, .5]) / 10.0
+            coco_eval.params.iouThrs = np.linspace(.5, 0.95, int(np.round((0.95 - .5) / .05)) + 1, endpoint=True)
             self.coco_eval[iou_type] = coco_eval
             ###########################
 
