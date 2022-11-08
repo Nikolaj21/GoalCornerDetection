@@ -160,3 +160,4 @@ def visualize_results(model, images, device, plotdim, image_original=None, bboxe
 
     #     ax[1].imshow(image)
     #     ax[1].set_title('New results', fontsize=fontsize)
+

@@ -65,7 +65,7 @@ def train(model, optimizer, loss_fun, trainloader, testloader, epochs=10,show_ev
 
 
 # #We define the training as a function so we can easily re-use it.
-# def train_thomas(model, optimizer, train_loader, val_loader, num_epochs=1, modelNr=1, dataAug=False):
+# def train_example(model, optimizer, train_loader, val_loader, num_epochs=1, modelNr=1, dataAug=False):
 #     out_dict = {'test_loss': [],
 #               'train_loss': [],
 #               'train_mean_loss': [],

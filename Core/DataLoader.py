@@ -170,13 +170,13 @@ class GoalCalibrationDataset(Dataset):
 ############################################################
 ## data loader with data augmentation
 class GoalCalibrationDatasetAUG(Dataset):
-    def __init__(self,datapath, transforms=None):
+    def __init__(self,datapath, transforms=None, istrain=False):
 
         self.img_list = sorted(glob.glob(datapath + '/*/*.jpg'))
         self.annotation_list = sorted(glob.glob(datapath + '/FootballGoalCorners/AnnotationFiles/*.json'))
         ### remove image paths from list if they aren't of category 'free kick'
         self.img_list_filtered, self.annotation_list_filtered = filter_data(self.img_list,self.annotation_list)
-
+        self.istrain = istrain
         self.transforms = transforms
 
     def  __len__(self):
@@ -199,14 +199,14 @@ class GoalCalibrationDatasetAUG(Dataset):
 
         # All objects are goal
         bboxes_labels_original = ['goal' for _ in bboxes_original]
+        if self.istrain:
+            if self.transforms:
 
-        if self.transforms:
-
-            # Apply augmentations
-            transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
-            img = transformed['image']
-            bboxes = transformed['bboxes']
-            keypoints = np.array(transformed['keypoints']).tolist()
+                # Apply augmentations
+                transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
+                img = transformed['image']
+                bboxes = transformed['bboxes']
+                keypoints = np.array(transformed['keypoints']).tolist()
         
         else:
             img, bboxes, keypoints = img_original, bboxes_original, keypoints_original 

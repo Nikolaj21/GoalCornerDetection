@@ -1,5 +1,5 @@
 import torch
-import transforms as T
+import Core.torchhelpers.transforms as T
 
 
 class DetectionPresetTrain:

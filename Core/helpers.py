@@ -39,15 +39,15 @@ def to_torch(nparray):
         print('could not convert to torch tensor. Check type of input')
         return nparray
 
-def split_data_train_test(DatasetClass,validation_split=0.25,batch_size=1, shuffle_dataset=False, shuffle_seed=None,data_amount=1, num_workers=0, pin_memory=False):
+def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0.25,batch_size=1, shuffle_dataset=False, shuffle_seed=None,data_amount=1, num_workers=0, pin_memory=False):
     '''
     Function that splits data from dataset class into a train and validation set
 
     validation_split: the percentage of the data that should be in the validation set
     '''
-
+    assert len(DatasetClass_train) == len(DatasetClass_val), f'Size of DatasetClass for train ({len(DatasetClass_train)}) and val ({len(DatasetClass_val)}) is different, check input'
     # Creating data indices for training and validation splits:
-    dataset_size = int(np.floor(len(DatasetClass)*data_amount))
+    dataset_size = int(np.floor(len(DatasetClass_train)*data_amount))
     indices = list(range(dataset_size))
     split = int(np.floor(validation_split * dataset_size))
 
@@ -60,13 +60,13 @@ def split_data_train_test(DatasetClass,validation_split=0.25,batch_size=1, shuff
     train_sampler = SubsetRandomSampler(train_indices)
     val_sampler = SubsetRandomSampler(val_indices)
 
-    train_loader = DataLoader(DatasetClass,
+    train_loader = DataLoader(DatasetClass_train,
                                 batch_size=batch_size, 
                                 sampler=train_sampler,
                                 collate_fn=collate_fn,
                                 num_workers=num_workers,
                                 pin_memory=pin_memory)
-    validation_loader = DataLoader(DatasetClass,
+    validation_loader = DataLoader(DatasetClass_val,
                                     batch_size=batch_size,
                                     sampler=val_sampler,
                                     collate_fn=collate_fn,
@@ -83,7 +83,7 @@ def train_transform():
         [A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, brightness_by_max=True, p=0.5),
         A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
         A.Blur(blur_limit=10, p=0.5),
-        A.Rotate(limit=5,p=0.5)
+        A.Rotate(limit=3,p=0.5)
         ],
         keypoint_params=A.KeypointParams(format='xy'), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
         bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bboxes_labels']) # Bboxes should have labels, read more at https://albumentations.ai/docs/getting_started/bounding_boxes_augmentation/
@@ -106,3 +106,4 @@ def test_num_workers(data,batch_size, data_amount=1, pin_memory = True):
                 pass
         end = time.time()
         print("Finish with:{} second, num_workers={}".format(end - start, num_workers))
+
