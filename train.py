@@ -1,15 +1,14 @@
 import sys
 sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
-# sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Core/torchhelpers')
 import os
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
-from Core.helpers import split_data_train_test, train_transform
+from Core.helpers import split_data_train_test, train_transform, eval_PCK
+from Core.plottools import plot_loss
 from Core.DataLoader import GoalCalibrationDataset,GoalCalibrationDatasetAUG
-from utils import DATA_DIR
+from utils import DATA_DIR, export_wandb_api
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
 # https://github.com/pytorch/vision/tree/main/references/detection
 from Core.torchhelpers.utils import MetricLogger
@@ -17,7 +16,10 @@ from Core.torchhelpers.utils import reduce_dict
 from Core.torchhelpers.engine import train_one_epoch, evaluate
 from torchvision.models.detection.rpn import AnchorGenerator
 import json
+import wandb
 
+# function to set api key as environment variable
+export_wandb_api()
 
 def validate_epoch(model, dataloader, device, epoch, print_freq):
     '''
@@ -27,10 +29,11 @@ def validate_epoch(model, dataloader, device, epoch, print_freq):
     metric_logger_val = MetricLogger(delimiter="  ")
     header = f"Epoch: [{epoch}]"
 
-    print(f'Running testing loop!')
+    print(f'Running validation loop!')
     # Compute the validation loss
+    batchnr = 0
+    steps_per_epoch = len(dataloader)
     for images, targets in metric_logger_val.log_every(dataloader, print_freq, header):
-    # for images, targets in validation_loader:
         # move images and targets to device
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
@@ -40,6 +43,17 @@ def validate_epoch(model, dataloader, device, epoch, print_freq):
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = reduce_dict(loss_dict)
         losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+
+        # log metrics to wandb dashboard
+        metrics_val = {"validation/loss": losses_reduced,
+                        "validation/loss_classifier":loss_dict_reduced['loss_classifier'],
+                        "validation/loss_box_reg":loss_dict_reduced['loss_box_reg'],
+                        "validation/loss_keypoint":loss_dict_reduced['loss_keypoint'],
+                        "validation/loss_objectness":loss_dict_reduced['loss_objectness'],
+                        "validation/loss_rpn_box_reg":loss_dict_reduced['loss_rpn_box_reg'],
+                        "validation/step": steps_per_epoch*epoch+batchnr}
+        wandb.log(metrics_val)
+        batchnr += 1
 
         metric_logger_val.update(loss=losses_reduced, **loss_dict_reduced)
         # torch.cuda.empty_cache()
@@ -57,6 +71,7 @@ def save_model(save_folder, model, loss_dict):
     torch.save(model.state_dict(), os.path.join(save_folder,'weights.pth'))
     print(f'Model weights and losses saved to {save_folder}')
 
+
 def get_args_parser(add_help=True):
     import argparse
     parser = argparse.ArgumentParser(description="PyTorch Keypoint Detection Training", add_help=add_help)
@@ -65,15 +80,17 @@ def get_args_parser(add_help=True):
     parser.add_argument("-b", "--batch-size", default=4, type=int, help="images per gpu, the total batch size is $NGPU x batch_size")
     parser.add_argument("--validation-split", default=0.25, type=float, help="How much of the data should be in the validation set (float between 0 and 1)")
     parser.add_argument("--epochs", default=2, type=int, metavar="N", help="number of total epochs to run")
-    parser.add_argument("--workers", default=6, type=int, metavar="N", help="number of data loading workers (default: 4)")
+    parser.add_argument("--workers", default=6, type=int, metavar="N", help="number of data loading workers (default: 6)")
     parser.add_argument("--opt", default="adam", type=str, help="optimizer, either sgd or adam")
     parser.add_argument("--lr",default=0.001,type=float,help="initial learning rate, 0.02 is the default value for training on 8 gpus and 2 images_per_gpu")
-    parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum")
+    parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum to use in the optimizer")
     parser.add_argument("--weight-decay", default=0.0005, type=float, dest="weight_decay", metavar="W", help="weight decay (default: 5e-4)")
     parser.add_argument("--print-freq", default=100, type=int, help="print frequency")
     parser.add_argument("--output-dir", default="/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/", type=str, help="path to save outputs")
     parser.add_argument("--model-name", default="tester_model", type=str, help="Unique folder name for saving model results")
-    parser.add_argument("--test-only", dest="test_only", help="Only test the model", action="store_true")
+    parser.add_argument("--test-only", dest="test_only", action="store_true", help="Only test the model")
+    parser.add_argument("--data-aug", dest="data_aug", action="store_true", help="Augment data during training")
+
     return parser
 
 def main(args):
@@ -82,7 +99,6 @@ def main(args):
     ### Set save path ###
     save_folder = args.output_dir + args.model_name + f'_{args.epochs}epochs/'
     # print options used in training
-
     print(f"""
     ####################
     Training parameters
@@ -97,11 +113,14 @@ def main(args):
     weight_decay={args.weight_decay}
     """)
 
-    # initialize an instance of the dataloader class
-    GoalData_train = GoalCalibrationDatasetAUG(args.data_dir,transforms=train_transform(),istrain=True)
+    # initialize an instance of the dataloader class, one for train and one for validation
+    if args.data_aug:
+        GoalData_train = GoalCalibrationDatasetAUG(args.data_dir,transforms=train_transform(),istrain=True)
+    else:
+        GoalData_train = GoalCalibrationDatasetAUG(args.data_dir,transforms=None,istrain=False)
+
     GoalData_val = GoalCalibrationDatasetAUG(args.data_dir,transforms=None,istrain=False)
-    # GoalData_train = GoalCalibrationDataset(args.data_dir,transforms=None)
-    # GoalData_val = GoalCalibrationDataset(args.data_dir,transforms=None)
+
     # put dataloader into pytorch dataloader function with batch loading
     train_loader,validation_loader = split_data_train_test(
                                                             GoalData_train,
@@ -132,18 +151,6 @@ def main(args):
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
     print_freq = args.print_freq
 
-    # out_dict = {
-    #     # losses in each step (batch)
-    #     'loss_keypoint_train': [],
-    #     'loss_keypoint_val': [],
-    #     'loss_all_train': [],
-    #     'loss_all_val': [],
-    #     # mean losses in each epoch
-    #     'loss_keypoint_train_mean': {},
-    #     'loss_keypoint_val_mean': {},
-    #     'loss_all_train_mean': {},
-    #     'loss_all_val_mean': {}
-    # }
     loss_dict = {
         'train': {
             # losses in each step (batch)
@@ -170,6 +177,32 @@ def main(args):
         evaluate(model, validation_loader, device=device)
         return
 
+    # initialize wandb run
+    wandb.init(
+        project="GoalCornerDetection",
+        name=args.model_name,
+        config={
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "lr": args.lr,
+            "optimizer": args.opt,
+            "momentum": args.momentum,
+            "weight_decay": args.weight_decay
+            }
+        )
+    # Define custom x-axis metric
+    wandb.define_metric("train/step")
+    # set all other train/ metrics to use this step
+    wandb.define_metric("train/*", step_metric="train/step", summary="min")
+    # Do the same, but for validation metrics
+    wandb.define_metric("validation/step")
+    wandb.define_metric("validation/*", step_metric="validation/step", summary="min")
+    # Do the same, but for epoch metric
+    wandb.define_metric("epoch")
+    wandb.define_metric("epoch_metrics/loss_avg", step_metric="epoch", summary="min")
+    wandb.define_metric("epoch_metrics/loss_total", step_metric="epoch", summary="min")
+    
+
     ###################### Training ####################################
     for epoch in range(args.epochs):
         # Run training loop
@@ -195,90 +228,40 @@ def main(args):
         loss_dict['val']['keypoint_mean'].append(metric_logger_val.meters['loss_keypoint'].global_avg)
         loss_dict['val']['keypoint_total'].append(metric_logger_val.meters['loss_keypoint'].total)
 
-    print('\nFINISHED TRAINING :)')
+         # log metrics to wandb dashboard
+        metrics_epoch = {
+            "epoch_metrics/loss_avg": {
+                "train":metric_logger.meters['loss_keypoint'].global_avg,
+                "val":metric_logger_val.meters['loss_keypoint'].global_avg
+            },
+            "epoch_metrics/loss_total": {
+                "train":metric_logger.meters['loss_keypoint'].total,
+                "val":metric_logger_val.meters['loss_keypoint'].total
+            },
+            "epoch": epoch}
+        wandb.log(metrics_epoch)
+
+    print('\nFINISHED TRAINING :) #################################################################################\n')
 
     # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
     evaluate(model, validation_loader, device)
     ###################### save losses and weights
     save_model(save_folder=save_folder, model=model, loss_dict=loss_dict)
-
-    def eval_PCK(model, data_loader, device, thresholds=[50]):
-        cpu_device = torch.device("cpu")
-        CK = {threshold:0 for threshold in thresholds}
-        TK = len(data_loader.sampler.indices)*4
-        PCK = {}
-        for threshold in thresholds:
-            print(f'\nCurrent threshold: {threshold}')
-            for images, targets in data_loader:
-                images = list(image.to(device) for image in images)
-                # outputs will be a list of dict of len == batch_size
-                with torch.no_grad():
-                    outputs = model(images)
-                # move outputs to device
-                outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
-                # extract the euclidean distance (in pixels) between every ground-truth and detection keypoint in the batch, and threshold them to return the matches
-                matches = [np.linalg.norm(dt[:2]-gt[:2]) < threshold
-                for target, output in zip(targets, outputs)
-                for obj_gt,obj_dt in zip(target['keypoints'],output['keypoints'])
-                for gt, dt in zip(obj_gt,obj_dt)]
-                
-                CK[threshold] += np.count_nonzero(matches)
-            PCK[threshold] = CK[threshold] / TK
-        return PCK
-
-
-
-
-    '''
-    plot losses from a loss dict
-    '''
-    ############## train/val loss per epoch
-    fig,ax = plt.subplots(1,1,figsize=(5,5))
-    epochs = args.epochs
-    x = np.arange(epochs)
-    ax.plot(x,loss_dict['train']['all_mean'], label='training loss')
-    ax.plot(x,loss_dict['val']['all_mean'], label='validation loss')
-    ax.legend()
-    ax.set_title('Loss curve')
-    ax.set_xticks(np.arange(0,epochs+1,5))
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Loss')
-    fig.savefig(os.path.join(save_folder,'loss_all_epochs.png'))
-
-    ############## train/val keypoint loss per epoch
-    fig,ax = plt.subplots(1,1,figsize=(5,5))
-    epochs = args.epochs
-    x = np.arange(epochs)
-    ax.plot(x,loss_dict['train']['keypoint_mean'], label='training loss')
-    ax.plot(x,loss_dict['val']['keypoint_mean'], label='validation loss')
-    ax.legend()
-    # fig.suptitle('Keypoint loss', fontweight ="bold")
-    ax.set_title('Keypoint loss curve')
-    ax.set_xticks(np.arange(0,epochs+1,5))
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Loss')
-    fig.savefig(os.path.join(save_folder,'loss_keypoint_epochs.png'))
-
-    ############## train loss per step
-    fig,ax = plt.subplots(1,1,figsize=(5,5))
-    steps = len(loss_dict['train']['all'])
-    x = np.arange(steps)
-    ax.plot(x,loss_dict['train']['all'], label='training loss')
-    ax.legend()
-    ax.set_title('Loss curve')
-    ax.set_xlabel('Step')
-    ax.set_ylabel('Loss')
-    fig.savefig(os.path.join(save_folder,'loss_all_steps.png'))
+    # plot losses and save as images in save_folder
+    plot_loss(loss_dict,save_folder,args.epochs)
+    # Evaluate PCK for all the keypoints
+    thresholds=[10,30,50,75,100]
+    PCK = eval_PCK(model,validation_loader,device,thresholds=thresholds)
+    print(f'Percentage of Correct Keypoints (PCK)\n{PCK}')
+    # Log the PCK values in wandb
+    for threshold in thresholds:
+        wandb.run.summary[f'PCK@{threshold}pix'] = PCK[threshold]
+    
 
 def test(args):
-    # just a test function to see args values
-    print(f'data_dir from parser: {args.data_dir}')
-    print(f'batch_size from parser: {args.batch_size}')
-    save_folder = args.output_dir + args.model_name + f'_{args.epochs}epochs'
-    print(f'save folder: {save_folder}')
-    print(f'--test-only option result: {args.test_only}')
+    # just a test function
+    pass
 
 if __name__ == '__main__':
     args = get_args_parser().parse_args()
     main(args)
-    # test(args)

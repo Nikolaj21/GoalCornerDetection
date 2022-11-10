@@ -8,14 +8,15 @@ import Core.torchhelpers.utils as utils
 from Core.torchhelpers.coco_eval import CocoEvaluator
 from Core.torchhelpers.coco_utils import get_coco_api_from_dataset
 from collections import deque
+import wandb
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
     # increase window size to be the number of batches, so we can save loss of every step in the MetricLogger
-    for loss_type in ["loss","loss_classifier","loss_box_reg","loss_keypoint","loss_objectness","loss_rpn_box_reg"]:
-        metric_logger.add_meter(loss_type, utils.SmoothedValue(window_size=len(data_loader)))
+    # for loss_type in ["loss","loss_classifier","loss_box_reg","loss_keypoint","loss_objectness","loss_rpn_box_reg"]:
+    #     metric_logger.add_meter(loss_type, utils.SmoothedValue(window_size=len(data_loader)))
 
     header = f"Epoch: [{epoch}]"
 
@@ -28,6 +29,8 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
             optimizer, start_factor=warmup_factor, total_iters=warmup_iters
         )
     print(f'\nRunning training loop!')
+    batchnr = 0
+    steps_per_epoch = len(data_loader)
     for images, targets in metric_logger.log_every(data_loader, print_freq, header):
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
@@ -57,7 +60,18 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
 
         if lr_scheduler is not None:
             lr_scheduler.step()
-
+            
+        # log metrics to wandb dashboard
+        metrics_train = {"train/loss": losses_reduced,
+                        "train/loss_classifier":loss_dict_reduced['loss_classifier'],
+                        "train/loss_box_reg":loss_dict_reduced['loss_box_reg'],
+                        "train/loss_keypoint":loss_dict_reduced['loss_keypoint'],
+                        "train/loss_objectness":loss_dict_reduced['loss_objectness'],
+                        "train/loss_rpn_box_reg":loss_dict_reduced['loss_rpn_box_reg'],
+                        "train/step": steps_per_epoch*epoch+batchnr}
+        wandb.log(metrics_train)
+        batchnr += 1
+        
         metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 

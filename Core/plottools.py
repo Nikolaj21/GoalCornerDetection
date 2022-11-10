@@ -161,3 +161,44 @@ def visualize_results(model, images, device, plotdim, image_original=None, bboxe
     #     ax[1].imshow(image)
     #     ax[1].set_title('New results', fontsize=fontsize)
 
+
+def plot_loss(loss_dict, save_folder, epochs):
+        '''
+        plot losses from a loss dict
+        '''
+        ticks_step = np.floor(epochs/10)+1
+        ############## train/val loss per epoch
+        fig,ax = plt.subplots(1,1,figsize=(5,5))
+        x = np.arange(epochs)
+        ax.plot(x,loss_dict['train']['all_mean'], label='training loss')
+        ax.plot(x,loss_dict['val']['all_mean'], label='validation loss')
+        ax.legend()
+        ax.set_title('Loss curve')
+        ax.set_xticks(np.arange(0,epochs+1,ticks_step))
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+        fig.savefig(os.path.join(save_folder,'loss_all_epochs.png'))
+
+        ############## train/val keypoint loss per epoch
+        fig,ax = plt.subplots(1,1,figsize=(5,5))
+        x = np.arange(epochs)
+        ax.plot(x,loss_dict['train']['keypoint_mean'], label='training loss')
+        ax.plot(x,loss_dict['val']['keypoint_mean'], label='validation loss')
+        ax.legend()
+        # fig.suptitle('Keypoint loss', fontweight ="bold")
+        ax.set_title('Keypoint loss curve')
+        ax.set_xticks(np.arange(0,epochs+1,ticks_step))
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+        fig.savefig(os.path.join(save_folder,'loss_keypoint_epochs.png'))
+
+        ############## train loss per step
+        fig,ax = plt.subplots(1,1,figsize=(5,5))
+        steps = len(loss_dict['train']['all'])
+        x = np.arange(steps)
+        ax.plot(x,loss_dict['train']['all'], label='training loss')
+        ax.legend()
+        ax.set_title('Loss curve')
+        ax.set_xlabel('Step')
+        ax.set_ylabel('Loss')
+        fig.savefig(os.path.join(save_folder,'loss_all_steps.png'))

@@ -6,6 +6,7 @@ from Core.torchhelpers.utils import collate_fn
 import albumentations as A # Library for augmentations
 from tqdm.notebook import tqdm
 import time
+import datetime
 
 # helper / utility functions
 
@@ -19,6 +20,7 @@ def im_to_numpy(tensor):
         print('could not convert to np array. Check type of input')
         pass
 
+
 def to_numpy(tensor):
     '''
     Convert torch tensor to numpy array and make sure it's detached and on cpu
@@ -29,6 +31,7 @@ def to_numpy(tensor):
         print('could not convert to np array. Check type of input')
         pass
 
+
 def to_torch(nparray):
     '''
     Converts a np.ndarray to a torch tensor
@@ -38,6 +41,7 @@ def to_torch(nparray):
     else:
         print('could not convert to torch tensor. Check type of input')
         return nparray
+
 
 def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0.25,batch_size=1, shuffle_dataset=False, shuffle_seed=None,data_amount=1, num_workers=0, pin_memory=False):
     '''
@@ -75,6 +79,7 @@ def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0
     print(f'###################\nTotal size of dataset: {dataset_size}\nTrain data --> Size: {len(train_loader.sampler)}, batch size: {train_loader.batch_size}\nValidation data --> Size: {len(validation_loader.sampler)}, batch size: {validation_loader.batch_size}')
     return train_loader,validation_loader
 
+
 def train_transform():
     '''
     Makes data augmentation transformations
@@ -88,6 +93,7 @@ def train_transform():
         keypoint_params=A.KeypointParams(format='xy'), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
         bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bboxes_labels']) # Bboxes should have labels, read more at https://albumentations.ai/docs/getting_started/bounding_boxes_augmentation/
     )
+
 
 def test_num_workers(data,batch_size, data_amount=1, pin_memory = True):
     """
@@ -107,3 +113,34 @@ def test_num_workers(data,batch_size, data_amount=1, pin_memory = True):
         end = time.time()
         print("Finish with:{} second, num_workers={}".format(end - start, num_workers))
 
+
+def eval_PCK(model, data_loader, device, thresholds=[50]):
+    """
+    Run PCK evaluation on model output for given thresholds
+    """
+    cpu_device = torch.device("cpu")
+    CK = {threshold:0 for threshold in thresholds}
+    TK = len(data_loader.sampler.indices)*4
+    PCK = {}
+    print(f'Running PCK evaluation...')
+    start_time = time.time()
+    for threshold in thresholds:
+        for images, targets in data_loader:
+            images = list(image.to(device) for image in images)
+            # outputs will be a list of dict of len == batch_size
+            with torch.no_grad():
+                outputs = model(images)
+            # move outputs to device
+            outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+            # extract the euclidean distance (in pixels) between every ground-truth and detection keypoint in the batch, and threshold them to return the matches
+            matches = [np.linalg.norm(dt[:2]-gt[:2]) < threshold
+            for target, output in zip(targets, outputs)
+            for obj_gt,obj_dt in zip(target['keypoints'],output['keypoints'])
+            for gt, dt in zip(obj_gt,obj_dt)]
+            
+            CK[threshold] += np.count_nonzero(matches)
+        PCK[threshold] = CK[threshold] / TK
+    total_time = time.time() - start_time
+    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+    print(f'Total time: {total_time_str} ({total_time/len(thresholds):.4f} s / threshold)')
+    return PCK

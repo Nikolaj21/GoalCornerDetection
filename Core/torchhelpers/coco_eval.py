@@ -37,8 +37,10 @@ class CocoEvaluator:
         self.img_ids.extend(img_ids)
 
         for iou_type in self.iou_types:
+            # reformat prediction output to be in the format shown on https://cocodataset.org/#format-results
             results = self.prepare(predictions, iou_type)
             with redirect_stdout(io.StringIO()):
+                # Load algorithm results and create API for accessing them.
                 coco_dt = COCO.loadRes(self.coco_gt, results) if results else COCO()
             coco_eval = self.coco_eval[iou_type]
 
