@@ -27,12 +27,12 @@ import torch.utils.data
 import torchvision
 import torchvision.models.detection
 import torchvision.models.detection.mask_rcnn
-import utils
-from coco_utils import get_coco, get_coco_kp
-from engine import evaluate, train_one_epoch
-from group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
+import Core.torchhelpers.utils as utils
+from Core.torchhelpers.coco_utils import get_coco, get_coco_kp
+from Core.torchhelpers.engine import evaluate, train_one_epoch
+from Core.torchhelpers.group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
 from torchvision.transforms import InterpolationMode
-from transforms import SimpleCopyPaste
+from Core.torchhelpers.transforms import SimpleCopyPaste
 
 
 def copypaste_collate_fn(batch):
