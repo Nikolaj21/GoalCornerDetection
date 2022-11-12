@@ -241,6 +241,9 @@ def main(args):
             "epoch": epoch}
         wandb.log(metrics_epoch)
 
+        if epoch % 5 == 0:
+            pass
+
     print('\nFINISHED TRAINING :) #################################################################################\n')
 
     # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
@@ -252,10 +255,15 @@ def main(args):
     # Evaluate PCK for all the keypoints
     thresholds=[10,30,50,75,100]
     PCK = eval_PCK(model,validation_loader,device,thresholds=thresholds)
-    print(f'Percentage of Correct Keypoints (PCK)\n{PCK}')
+    for pcktype,pck in PCK.items():
+        print(f'Percentage of Correct Keypoints (PCK) {pcktype}\n{pck}')
     # Log the PCK values in wandb
     for threshold in thresholds:
-        wandb.run.summary[f'PCK@{threshold}pix'] = PCK[threshold]
+        wandb.run.summary[f'PCK@{threshold}pix'] = PCK["all_corners"][threshold]
+        wandb.run.summary[f'PCK_TL@{threshold}pix'] = PCK["top_left"][threshold]
+        wandb.run.summary[f'PCK_TR@{threshold}pix'] = PCK["top_right"][threshold]
+        wandb.run.summary[f'PCK_BL@{threshold}pix'] = PCK["bot_left"][threshold]
+        wandb.run.summary[f'PCK_BR@{threshold}pix'] = PCK["bot_right"][threshold]
     
 
 def test(args):
