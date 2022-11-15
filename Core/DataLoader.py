@@ -178,6 +178,7 @@ class GoalCalibrationDatasetAUG(Dataset):
         self.img_list_filtered, self.annotation_list_filtered = filter_data(self.img_list,self.annotation_list)
         self.istrain = istrain
         self.transforms = transforms
+        
 
     def  __len__(self):
         return len(self.annotation_list_filtered)
@@ -225,7 +226,7 @@ class GoalCalibrationDatasetAUG(Dataset):
         target_dict = {
             'boxes': bboxes_tensor,
             'labels': torch.tensor([1 for _ in bboxes_tensor], dtype=torch.int64), # class label hard-coded to 1 always, as we are only interested in the football goals
-            'image_id': torch.tensor([idx]), # save id of image for reference
+            'image_id': torch.tensor((idx)), # save id of image for reference
             'keypoints': keypoints_tensor[None,:],
             'radii': radii,
             'area': (bboxes_tensor[:, 3] - bboxes_tensor[:, 1]) * (bboxes_tensor[:, 2] - bboxes_tensor[:, 0]),

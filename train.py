@@ -5,7 +5,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
-from Core.helpers import split_data_train_test, train_transform, eval_PCK
+from Core.helpers import split_data_train_test, train_transform, eval_PCK, get_prediction_images, make_PCK_plot_objects
 from Core.plottools import plot_loss
 from Core.DataLoader import GoalCalibrationDataset,GoalCalibrationDatasetAUG
 from utils import DATA_DIR, export_wandb_api
@@ -86,7 +86,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum to use in the optimizer")
     parser.add_argument("--weight-decay", default=0.0005, type=float, dest="weight_decay", metavar="W", help="weight decay (default: 5e-4)")
     parser.add_argument("--print-freq", default=100, type=int, help="print frequency")
-    parser.add_argument("--output-dir", default="/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/", type=str, help="path to save outputs")
+    parser.add_argument("--output-dir", default="/zhome/60/1/118435/Master_Thesis/Runs/", type=str, help="path to save outputs")
     parser.add_argument("--model-name", default="tester_model", type=str, help="Unique folder name for saving model results")
     parser.add_argument("--test-only", dest="test_only", action="store_true", help="Only test the model")
     parser.add_argument("--data-aug", dest="data_aug", action="store_true", help="Augment data during training")
@@ -97,7 +97,7 @@ def main(args):
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print(f'Running on {device}')
     ### Set save path ###
-    save_folder = args.output_dir + args.model_name + f'_{args.epochs}epochs/'
+    save_folder = os.path.join(args.output_dir, args.model_name + f'_{args.epochs}epochs/')
     # print options used in training
     print(f"""
     ####################
@@ -127,12 +127,13 @@ def main(args):
                                                             GoalData_val,
                                                             validation_split=args.validation_split,
                                                             batch_size=args.batch_size,
-                                                            shuffle_dataset=True,
-                                                            shuffle_seed=None,
                                                             data_amount=1,
                                                             num_workers=args.workers,
+                                                            shuffle_dataset=True,
+                                                            shuffle_dataset_seed=21,
+                                                            shuffle_epoch = False,
+                                                            shuffle_epoch_seed=0,
                                                             pin_memory=False) # pin_memory was false before running last training
-
     # Setting hyper-parameters
     num_classes = 2 # 1 class (goal) + background
     anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
@@ -241,8 +242,12 @@ def main(args):
             "epoch": epoch}
         wandb.log(metrics_epoch)
 
-        if epoch % 5 == 0:
-            pass
+        if epoch % 1 == 0:
+            pred_images = get_prediction_images(model,validation_loader,device)
+
+            pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
+            pred_images_dict['epoch'] = epoch
+            wandb.log(pred_images_dict)
 
     print('\nFINISHED TRAINING :) #################################################################################\n')
 
@@ -250,20 +255,17 @@ def main(args):
     evaluate(model, validation_loader, device)
     ###################### save losses and weights
     save_model(save_folder=save_folder, model=model, loss_dict=loss_dict)
+
     # plot losses and save as images in save_folder
-    plot_loss(loss_dict,save_folder,args.epochs)
+    # plot_loss(loss_dict,save_folder,args.epochs)
+    
     # Evaluate PCK for all the keypoints
-    thresholds=[10,30,50,75,100]
+    thresholds=np.arange(1,201)
     PCK = eval_PCK(model,validation_loader,device,thresholds=thresholds)
-    for pcktype,pck in PCK.items():
-        print(f'Percentage of Correct Keypoints (PCK) {pcktype}\n{pck}')
     # Log the PCK values in wandb
-    for threshold in thresholds:
-        wandb.run.summary[f'PCK@{threshold}pix'] = PCK["all_corners"][threshold]
-        wandb.run.summary[f'PCK_TL@{threshold}pix'] = PCK["top_left"][threshold]
-        wandb.run.summary[f'PCK_TR@{threshold}pix'] = PCK["top_right"][threshold]
-        wandb.run.summary[f'PCK_BL@{threshold}pix'] = PCK["bot_left"][threshold]
-        wandb.run.summary[f'PCK_BR@{threshold}pix'] = PCK["bot_right"][threshold]
+    PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
+    wandb.log(PCK_plot_objects)
+
     
 
 def test(args):
