@@ -18,9 +18,6 @@ from torchvision.models.detection.rpn import AnchorGenerator
 import json
 import wandb
 
-# function to set api key as environment variable
-export_wandb_api()
-
 def validate_epoch(model, dataloader, device, epoch, print_freq):
     '''
     Run validation of all images and print losses
@@ -88,12 +85,17 @@ def get_args_parser(add_help=True):
     parser.add_argument("--print-freq", default=100, type=int, help="print frequency")
     parser.add_argument("--output-dir", default="/zhome/60/1/118435/Master_Thesis/Runs/", type=str, help="path to save outputs")
     parser.add_argument("--model-name", default="tester_model", type=str, help="Unique folder name for saving model results")
-    parser.add_argument("--test-only", dest="test_only", action="store_true", help="Only test the model")
+    parser.add_argument("--test-only", dest="test_only", action="store_true", help="If option is set, the script willonly test the model")
     parser.add_argument("--data-aug", dest="data_aug", action="store_true", help="Augment data during training")
+    parser.add_argument("--pckthreshup", default=200, type=int, help="Upper threshold on the pixel error when when calculating PCK")
+    parser.add_argument("--predims_every", default=1, type=int, help="Interval (in epochs) in which to save intermittent prediction images from the validation set")
 
     return parser
 
 def main(args):
+    # set wandb api key as environment variable
+    export_wandb_api()
+    
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print(f'Running on {device}')
     ### Set save path ###
@@ -136,6 +138,7 @@ def main(args):
                                                             pin_memory=False) # pin_memory was false before running last training
     # Setting hyper-parameters
     num_classes = 2 # 1 class (goal) + background
+    #FIXME better aspect ratios for the anchor boxes needs to be decided. I would drop anything below 1 and above 3
     anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
     model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=4,rpn_anchor_generator=anchor_generator)
     model.to(device)
@@ -242,7 +245,7 @@ def main(args):
             "epoch": epoch}
         wandb.log(metrics_epoch)
 
-        if epoch % 1 == 0:
+        if epoch % args.predims_every == 0:
             pred_images = get_prediction_images(model,validation_loader,device)
 
             pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
@@ -260,7 +263,7 @@ def main(args):
     # plot_loss(loss_dict,save_folder,args.epochs)
     
     # Evaluate PCK for all the keypoints
-    thresholds=np.arange(1,201)
+    thresholds=np.arange(1,args.pckthreshup+1)
     PCK = eval_PCK(model,validation_loader,device,thresholds=thresholds)
     # Log the PCK values in wandb
     PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)

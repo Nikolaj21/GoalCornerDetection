@@ -1,7 +1,6 @@
 import torch
 import numpy as np
-from torch.utils.data.sampler import SubsetRandomSampler,Subset
-from torch.utils.data import DataLoader,random_split
+from torch.utils.data import DataLoader,random_split, SubsetRandomSampler, Subset
 from Core.torchhelpers.utils import collate_fn
 import albumentations as A # Library for augmentations
 from tqdm.notebook import tqdm
@@ -135,6 +134,12 @@ def test_num_workers(data,batch_size, data_amount=1, pin_memory = False):
 def find_pixelerror(model,data_loader,device):
     """
     Find distance (error) between ground truth and predictions in pixels, for all corners together and individually
+    Parameters:
+        model: a neural network made using pytorch
+        data_loader: a pytorch dataloader object
+        device: device on which to run data through model. Either torch.device('cuda') or torch.device('cpu')
+    Returns:
+        pixelerrors: a dict of all the pixel errors for every point in different categories.
     """
     N_keypoints = 4
     model.eval()
