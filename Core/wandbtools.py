@@ -36,7 +36,7 @@ def load_data(data_path):
 
 def run_PCK(model,data_loader,thresholds): 
     print('\nRunning PCK eval...')
-    PCK = eval_PCK(model,data_loader,device,thresholds=thresholds)
+    PCK,_ = eval_PCK(model,data_loader,device,thresholds=thresholds)
     # for pcktype,pck in PCK.items():
     #     print(f'Percentage of Correct Keypoints (PCK) {pcktype}\n{pck}')
     return PCK

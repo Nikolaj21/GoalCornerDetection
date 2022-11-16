@@ -5,7 +5,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
-from Core.helpers import split_data_train_test, train_transform, eval_PCK, get_prediction_images, make_PCK_plot_objects
+from Core.helpers import split_data_train_test, train_transform, eval_PCK, get_prediction_images, make_PCK_plot_objects, prediction_outliers
 from Core.plottools import plot_loss
 from Core.DataLoader import GoalCalibrationDataset,GoalCalibrationDatasetAUG
 from utils import DATA_DIR, export_wandb_api
@@ -75,7 +75,7 @@ def get_args_parser(add_help=True):
 
     parser.add_argument("--data-dir", default=DATA_DIR, type=str, help="dataset directory path")
     parser.add_argument("-b", "--batch-size", default=4, type=int, help="images per gpu, the total batch size is $NGPU x batch_size")
-    parser.add_argument("--validation-split", default=0.25, type=float, help="How much of the data should be in the validation set (float between 0 and 1)")
+    parser.add_argument("--validation-split", default=0.25, type=float, help="Fraction of the data to use as the validation set (float between 0 and 1)")
     parser.add_argument("--epochs", default=2, type=int, metavar="N", help="number of total epochs to run")
     parser.add_argument("--workers", default=6, type=int, metavar="N", help="number of data loading workers (default: 6)")
     parser.add_argument("--opt", default="adam", type=str, help="optimizer, either sgd or adam")
@@ -89,12 +89,37 @@ def get_args_parser(add_help=True):
     parser.add_argument("--data-aug", dest="data_aug", action="store_true", help="Augment data during training")
     parser.add_argument("--pckthreshup", default=200, type=int, help="Upper threshold on the pixel error when when calculating PCK")
     parser.add_argument("--predims_every", default=1, type=int, help="Interval (in epochs) in which to save intermittent prediction images from the validation set")
+    parser.add_argument("--data-amount", default=1, type=float, help="fraction of data that should be used (float between 0 and 1)")
 
     return parser
 
 def main(args):
     # set wandb api key as environment variable
     export_wandb_api()
+    # initialize wandb run
+    wandb.init(
+        project="GoalCornerDetection",
+        name=args.model_name,
+        config={
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "lr": args.lr,
+            "optimizer": args.opt,
+            "momentum": args.momentum,
+            "weight_decay": args.weight_decay
+            }
+        )
+    # Define custom x-axis metric
+    wandb.define_metric("train/step")
+    # set all other train/ metrics to use this step
+    wandb.define_metric("train/*", step_metric="train/step", summary="min")
+    # Do the same, but for validation metrics
+    wandb.define_metric("validation/step")
+    wandb.define_metric("validation/*", step_metric="validation/step", summary="min")
+    # Do the same, but for epoch metric
+    wandb.define_metric("epoch")
+    wandb.define_metric("epoch_metrics/loss_avg", step_metric="epoch", summary="min")
+    wandb.define_metric("epoch_metrics/loss_total", step_metric="epoch", summary="min")
     
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print(f'Running on {device}')
@@ -129,12 +154,12 @@ def main(args):
                                                             GoalData_val,
                                                             validation_split=args.validation_split,
                                                             batch_size=args.batch_size,
-                                                            data_amount=1,
+                                                            data_amount=args.data_amount,
                                                             num_workers=args.workers,
                                                             shuffle_dataset=True,
                                                             shuffle_dataset_seed=21,
                                                             shuffle_epoch = False,
-                                                            shuffle_epoch_seed=0,
+                                                            shuffle_epoch_seed=None,
                                                             pin_memory=False) # pin_memory was false before running last training
     # Setting hyper-parameters
     num_classes = 2 # 1 class (goal) + background
@@ -180,31 +205,6 @@ def main(args):
         # torch.backends.cudnn.deterministic = True
         evaluate(model, validation_loader, device=device)
         return
-
-    # initialize wandb run
-    wandb.init(
-        project="GoalCornerDetection",
-        name=args.model_name,
-        config={
-            "epochs": args.epochs,
-            "batch_size": args.batch_size,
-            "lr": args.lr,
-            "optimizer": args.opt,
-            "momentum": args.momentum,
-            "weight_decay": args.weight_decay
-            }
-        )
-    # Define custom x-axis metric
-    wandb.define_metric("train/step")
-    # set all other train/ metrics to use this step
-    wandb.define_metric("train/*", step_metric="train/step", summary="min")
-    # Do the same, but for validation metrics
-    wandb.define_metric("validation/step")
-    wandb.define_metric("validation/*", step_metric="validation/step", summary="min")
-    # Do the same, but for epoch metric
-    wandb.define_metric("epoch")
-    wandb.define_metric("epoch_metrics/loss_avg", step_metric="epoch", summary="min")
-    wandb.define_metric("epoch_metrics/loss_total", step_metric="epoch", summary="min")
     
 
     ###################### Training ####################################
@@ -232,7 +232,7 @@ def main(args):
         loss_dict['val']['keypoint_mean'].append(metric_logger_val.meters['loss_keypoint'].global_avg)
         loss_dict['val']['keypoint_total'].append(metric_logger_val.meters['loss_keypoint'].total)
 
-         # log metrics to wandb dashboard
+         # log epoch metrics to wandb dashboard
         metrics_epoch = {
             "epoch_metrics/loss_avg": {
                 "train":metric_logger.meters['loss_keypoint'].global_avg,
@@ -245,6 +245,7 @@ def main(args):
             "epoch": epoch}
         wandb.log(metrics_epoch)
 
+        # get intermediate prediction images and log in wandb
         if epoch % args.predims_every == 0:
             pred_images = get_prediction_images(model,validation_loader,device)
 
@@ -264,12 +265,14 @@ def main(args):
     
     # Evaluate PCK for all the keypoints
     thresholds=np.arange(1,args.pckthreshup+1)
-    PCK = eval_PCK(model,validation_loader,device,thresholds=thresholds)
+    PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds)
     # Log the PCK values in wandb
     PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
     wandb.log(PCK_plot_objects)
-
     
+    # Find the outliers in predictions and log them
+    outliertable = prediction_outliers(pixelerrors)
+    wandb.log({"outliers_table": outliertable})
 
 def test(args):
     # just a test function

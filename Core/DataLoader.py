@@ -11,10 +11,35 @@ from PIL import Image
 
 # data loader for the data before it was re-annotated
 class GoalCalibrationDatasetOLD(Dataset):
-    def __init__(self,datapath, transforms=None, filter=False):
+    def __init__(self,datapath, transforms=None, filter_data=False):
+        # list of paths to the images
         self.img_list = sorted(glob.glob(datapath + '/*/*.jpg'))
+        # list of paths to the annotation data
         self.calibration_list = sorted(glob.glob(datapath + '/*/*.txt'))
+        # list of paths to the re-annoated data
+        self.reannotate_list = sorted(glob.glob(datapath + '/FootballGoalCorners/AnnotationFiles/*.json'))
         self.transforms = transforms
+
+        if filter_data:
+            # self.img_list_filtered, self.annotation_list_filtered = filter_data(self.img_list,self.annotation_list)
+            ### remove image paths from list if they aren't of category 'free kick'
+            img_list_filtered = []
+            annotation_list_filtered = []
+            for idx, path in enumerate(self.reannotate_list):
+                annotation_json = json.load(open(path,'r',encoding='latin'))
+                # if annotation is from a valid freekick image
+                if annotation_json['Annotations']['0'][-1]['Attributes']['calibration_type'] == 'freekick':
+                    # add only annotation and image paths of type 'freekick'
+                    annotation_list_filtered.append(self.calibration_list[idx])
+                    img_list_filtered.append(self.img_list[idx])
+
+            print(f'All images: {len(self.img_list)}')
+            # print(f'All annotations: {len(self.annotation_list)}')
+            print(f'Filtered images: {len(img_list_filtered)}')
+            # print(f'Filtered annotations: {len(self.annotation_list_filtered)}')
+            ############################
+            self.img_list = img_list_filtered
+            self.calibration_list = annotation_list_filtered
 
     def  __len__(self):
         return len(self.calibration_list)
@@ -31,10 +56,6 @@ class GoalCalibrationDatasetOLD(Dataset):
         calibration_json = json.load(open(calibration_path,'r',encoding='latin'))
         keypoints = calibration_json['GoalCalibrationPoints']
         calibration_quality = calibration_json['CalibrationQuality']
-        session_type = calibration_json.get('SessionType')
-        
-        # change order of keypoints so the top left point is first and bottom right point is last
-        # keypoints = sorted(keypoints, key=lambda x: np.sum(x))
 
         # make bounding boxes
         ##########################
@@ -57,9 +78,6 @@ class GoalCalibrationDatasetOLD(Dataset):
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
         for kpt in keypoints:
             kpt.append(1)
-
-        # if self.transforms:
-        #     img = cv2.resize(img,(4208,3120)) # cv2 shape order is opposite (W,H) instead of normal (H,W)
 
         # convert image to tensor
         img_tensor = F.to_tensor(img)

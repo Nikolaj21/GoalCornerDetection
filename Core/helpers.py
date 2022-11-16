@@ -23,7 +23,6 @@ def im_to_numpy(tensor):
         print('could not convert to np array. Check type of input')
         pass
 
-
 def to_numpy(tensor):
     '''
     Convert torch tensor to numpy array and make sure it's detached and on cpu
@@ -34,7 +33,6 @@ def to_numpy(tensor):
         print('could not convert to np array. Check type of input')
         pass
 
-
 def to_torch(nparray):
     '''
     Converts a np.ndarray to a torch tensor
@@ -44,7 +42,6 @@ def to_torch(nparray):
     else:
         print('could not convert to torch tensor. Check type of input')
         return nparray
-
 
 def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0.25,batch_size=1, data_amount=1, num_workers=0, shuffle_dataset=False, shuffle_dataset_seed=None, shuffle_epoch=False, shuffle_epoch_seed=0, pin_memory=False):
     '''
@@ -69,17 +66,21 @@ def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0
     val_subset = Subset(DatasetClass_val,val_indices)
     
     if shuffle_epoch:
-        torch.manual_seed(shuffle_epoch_seed)
+        if shuffle_epoch_seed:
+            torch.manual_seed(shuffle_epoch_seed)
+
     train_loader = DataLoader(train_subset,
                                     batch_size=batch_size,
                                     collate_fn=collate_fn,
                                     num_workers=num_workers,
-                                    pin_memory=pin_memory)
+                                    pin_memory=pin_memory,
+                                    shuffle=shuffle_epoch)
     validation_loader = DataLoader(val_subset,
                                     batch_size=batch_size,
                                     collate_fn=collate_fn,
                                     num_workers=num_workers,
-                                    pin_memory=pin_memory)
+                                    pin_memory=pin_memory,
+                                    shuffle=False)
     # train_loader = DataLoader(DatasetClass_train,
     #                             batch_size=batch_size, 
     #                             sampler=train_sampler,
@@ -97,7 +98,6 @@ def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0
 
     return train_loader,validation_loader
 
-
 def train_transform():
     '''
     Makes data augmentation transformations
@@ -111,7 +111,6 @@ def train_transform():
         keypoint_params=A.KeypointParams(format='xy'), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
         bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bboxes_labels']) # Bboxes should have labels, read more at https://albumentations.ai/docs/getting_started/bounding_boxes_augmentation/
     )
-
 
 def test_num_workers(data,batch_size, data_amount=1, pin_memory = False):
     """
@@ -201,7 +200,7 @@ def eval_PCK(model, data_loader, device, thresholds=[50]):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f'Total time: {total_time_str} ({total_time/len(thresholds):.4f} s / threshold)')
-    return PCK
+    return PCK,pixelerrors
 
 def get_prediction_images(model,data_loader,device):
     """
@@ -211,7 +210,7 @@ def get_prediction_images(model,data_loader,device):
     """
     model.eval()
     model.to(device)
-    # FIXME
+    # FIXME Consider which photos to show each time, if it should be the first case in the data_loader or what
     images,targets = next(iter(data_loader))
     images = list(image.to(device) for image in images)
     image_ids = [target['image_id'] for target in targets]
@@ -274,3 +273,21 @@ def make_PCK_plot_objects(PCK,thresholds):
         # wandb.log({f"PCK_{pck_type}" : wandb.plot.line(table, "Threshold", "PCK", title=f"PCK_{pck_type} Curve")})
         PCK_plot_objects[f"PCK_{pck_type} Curve"] = wandb.plot.line(table, "Threshold", "PCK", title=f"PCK_{pck_type} Curve")
     return PCK_plot_objects
+
+def prediction_outliers(errors_dict):
+    data = []
+    for cat,errors in errors_dict.items():
+        Ndata = len(errors)
+        minval = np.min(errors)
+        maxval = np.max(errors)
+        std = np.std(errors)
+        mean = np.mean(errors)
+        median = np.median(errors)
+        inlier_min = mean-3*std
+        inlier_max = mean+3*std
+        outliers = [error for error in errors if not inlier_min <= error <= inlier_max]
+        num_outliers = len(outliers)
+        pct_outliers = num_outliers / Ndata
+        data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers))
+    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers'])
+    return table
