@@ -5,8 +5,8 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
-from Core.helpers import split_data_train_test, train_transform, eval_PCK, get_prediction_images, make_PCK_plot_objects, prediction_outliers
-from Core.plottools import plot_loss
+from Core.helpers import split_data_train_test, train_transform, eval_PCK, make_PCK_plot_objects, prediction_outliers
+from Core.plottools import plot_loss, get_prediction_images
 from Core.DataLoader import GoalCalibrationDataset,GoalCalibrationDatasetAUG
 from utils import DATA_DIR, export_wandb_api
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
@@ -246,8 +246,10 @@ def main(args):
         wandb.log(metrics_epoch)
 
         # get intermediate prediction images and log in wandb
-        if epoch % args.predims_every == 0:
-            pred_images = get_prediction_images(model,validation_loader,device)
+        if epoch % args.predims_every == 0 or epoch == (args.epochs-1):
+            # FIXME Consider which photos to show each time, if it should be the first case in the data_loader or what
+            images,targets = next(iter(validation_loader))
+            pred_images = get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4)
 
             pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
             pred_images_dict['epoch'] = epoch

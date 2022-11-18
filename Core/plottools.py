@@ -86,81 +86,109 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
         ax[1].set_title(f'{title_new}, Prediction confidence: {pred_score:.4f}', fontsize=fontsize)
 
 
-def visualize_results(model, images, device, plotdim, image_original=None, bboxes_original=None, keypoints_original=None):
+def visualize_results(model, images, targets, device, plotdim, score_thresh=0.7, iou_thresh=0.3, opaqueness=0.4):
     '''
-    Plots the results, i.e. bounding boxes and keypoints for a given model batch.
+    Plots the results, i.e. bounding boxes and keypoints for a given model and list of images. Also plots the ground-truth keypoints.
+    Args:
+        plotdim: A tuple of two ints containing the dimensions for plotting in the form (H,W). HxW should be <= number of images and targets!
+        opaqueness: A factor between 0 and 1 that decides how unsee-through the keypoints are. Lower value means it is more see-through.
+        score_thresh: A threshold for the confidence score on the output from the model, so we only plot boxes where the model has a high confidence.
+        iou_thresh: A threshold for performing NMS on the resulting predictions after doing the score thresholding.
     '''
+
+    pred_images,scores_images = get_prediction_images(model,images,targets,device,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness,return_scores=True)
+
+    print(f'Scores for images\n')
+    for id,scores in zip(pred_images.keys(),scores_images):
+        print(f"scores image {id}: {scores}")
+
+    _,axes = plt.subplots(plotdim[0],plotdim[1], figsize=(40,40), layout="constrained")
+    for i,(im_id,pred_image) in enumerate(pred_images.items()):
+        axes.ravel()[i].imshow(pred_image)
+        axes.ravel()[i].set_title(f'Image ID: {im_id}')
+
+    return
+
+def get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4,return_scores=False):
+    """
+    Takes model, data and list of image_ids and returns
+    list of prediction images for the model of type
+    data_loader: pytorch dataloader
+    """
+    model.eval()
+    model.to(device)
     images = list(image.to(device) for image in images)
-
+    # outputs will be a list of dict of len == len(images)
     with torch.no_grad():
-        model.to(device)
-        model.eval()
-        output = model(images)
+        outputs = model(images)
+    pred_images = {}
+    for image,target,output in zip(images,targets,outputs):
+        id = target['image_id']
+        keypoints_gt = [[list(map(int, kp[:2])) for kp in kps] for kps in to_numpy(target['keypoints'])]
+        bboxes,keypoints = NMS(output,score_thresh=score_thresh,iou_thresh=iou_thresh)
+        pred_image = make_pred_image(image, bboxes, keypoints, keypoints_gt, opaqueness=opaqueness)
+        pred_images[id] = pred_image
 
-    print(f'Scores for batch\n')
-    for i,out in enumerate(output):
-        print(f"scores item {i}: {to_numpy(out['scores'])}")
-
-    images = [(im_to_numpy(image) * 255).astype(np.uint8) for image in images]
-    scores_images = [to_numpy(outputsingle['scores']) for outputsingle in output]
-
-
-    high_scores_idxs = [np.where(scores > 0.8)[0].tolist() for scores in scores_images] # Indexes of boxes with scores > 0.8
-    post_nms_idxs = [torchvision.ops.nms(outputsingle['boxes'][high_scores_idxs[i]], outputsingle['scores'][high_scores_idxs[i]], 0.3).cpu().numpy()
-                    for i, outputsingle in enumerate(output)] # Indexes of boxes left after applying NMS (iou_threshold=0.3)
-
-    # Below, in output[0]['keypoints'][high_scores_idxs][post_nms_idxs] and output[0]['boxes'][high_scores_idxs][post_nms_idxs]
-    # Firstly, we choose only those objects, which have score above predefined threshold. This is done with choosing elements with [high_scores_idxs] indexes
-    # Secondly, we choose only those objects, which are left after NMS is applied. This is done with choosing elements with [post_nms_idxs] indexes
-
-    keypoints_images = [[[list(map(int, kp[:2])) for kp in kps]
-                        for kps in to_numpy(outputsingle['keypoints'][high_scores_idxs[i]][post_nms_idxs[i]])]
-                        for i, outputsingle in enumerate(output)]
-
-    bboxes_images = [[list(map(int, bbox.tolist()))
-                        for bbox in to_numpy(outputsingle['boxes'][high_scores_idxs[i]][post_nms_idxs[i]])]
-                        for i, outputsingle in enumerate(output)]
-    fontsize = 18
-    keypoints_classes_ids2names = {0: 'top-left', 1: 'top-right', 2: 'bot-left', 3: 'bot-right'}
+    if return_scores:
+        scores_images = [to_numpy(out['scores']) for out in outputs]
+        return pred_images,scores_images
+    else:
+        return pred_images
     
 
-    # loop through all images and add bboxes and keypoints to them
-    for i, (bboxes,keypoints) in enumerate(zip(bboxes_images,keypoints_images)):
-        # loop through all bounding boxes in every image
-        for bbox in bboxes:
-            start_point = (bbox[0], bbox[1])
-            end_point = (bbox[2], bbox[3])
-            images[i] = cv2.rectangle(images[i].copy(), start_point, end_point, (0,255,0), 2)
-        # loop through all keypoints in every image
-        for kps in keypoints:
-            for idx, kp in enumerate(kps):
-                images[i] = cv2.circle(images[i].copy(), tuple(kp), 5, (255,0,0), 10)
-                images[i] = cv2.putText(images[i].copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
+def make_pred_image(image, bboxes, keypoints, keypointsGT, opaqueness=0.4):
+    """
+    Adds bboxes and keypoints to a single image
+    alpha is the opaqueness of the keypoints, lower value means more see-through (must be between 0 and 1)
+    returns np.array for the image
+    """
+    image = (im_to_numpy(image) * 255).astype(np.uint8)
+    keypoints_classes_ids2names = {0: 'TL', 1: 'TR', 2: 'BL', 3: 'BR'}
 
-    if image_original is None and keypoints_original is None:
-        _,axes = plt.subplots(plotdim[0],plotdim[1], figsize=(40,40), layout="constrained")
-        for i,ax in enumerate(axes.ravel()):
-            ax.imshow(images[i])
+    # put all bounding boxes in the image
+    for bbox in bboxes:
+        start_point = (bbox[0], bbox[1])
+        end_point = (bbox[2], bbox[3])
+        image = cv2.rectangle(image.copy(), start_point, end_point, (0,255,0), 2)
+    # put all ground-truth keypoints in the image
+    for kps in keypointsGT:
+        for idx, kp in enumerate(kps):
+            overlay = image.copy()
+            cv2.circle(overlay, tuple(kp), 5, (0,0,255), 10)
+            image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
+    # put all predicted keypoints in the image
+    for kps in keypoints:
+        for idx, kp in enumerate(kps):
+            overlay = image.copy()
+            cv2.circle(overlay, tuple(kp), 5, (255,0,0), 10)
+            image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
+            image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
+    return image
 
-    # else:
-    #     for bbox in bboxes_original:
-    #         start_point = (bbox[0], bbox[1])
-    #         end_point = (bbox[2], bbox[3])
-    #         image_original = cv2.rectangle(image_original.copy(), start_point, end_point, (0,255,0), 2)
+def NMS(output,score_thresh=0.7,iou_thresh=0.3):
+    """
+    Perform non-maximum suppresion on a single output
+    output: dict containing the prediction results for image.
+        keys (minimum): keypoints, scores, boxes
+    returns the updated bboxes and keypoints that passed nms
+    """
+    scores = to_numpy(output['scores'])
 
-    #     keypoints_classes_ids2names_original= {0: 'top-left', 1: 'top-right', 2: 'bot-left', 3: 'bot-right'}
-    #     for kps in keypoints_original:
-    #         for idx, kp in enumerate(kps):
-    #             image_original = cv2.circle(image_original, tuple(kp), 5, (255,0,0), 10)
-    #             image_original = cv2.putText(image_original, " " + keypoints_classes_ids2names_original[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
+    # Indexes of boxes with scores > score_thresh
+    high_scores_idxs = np.where(scores > score_thresh)[0].tolist()
+    # if there are no predictions above the threshold, take the best one, i.e. index 0
+    high_scores_idxs = high_scores_idxs if len(high_scores_idxs) >= 1 else [0]
 
-    #     f, ax = plt.subplots(plotdim[0], plotdim[1], figsize=(40, 40))
+    post_nms_idxs = torchvision.ops.nms(output['boxes'][high_scores_idxs], output['scores'][high_scores_idxs], iou_thresh).cpu().numpy() # Indexes of boxes left after applying NMS (iou_threshold=iou_thresh)
 
-    #     ax[0].imshow(image_original)
-    #     ax[0].set_title('Original results', fontsize=fontsize)
+    keypoints = []
+    for kps in to_numpy(output['keypoints'][high_scores_idxs][post_nms_idxs]):
+        keypoints.append([list(map(int, kp[:2])) for kp in kps])
 
-    #     ax[1].imshow(image)
-    #     ax[1].set_title('New results', fontsize=fontsize)
+    bboxes = []
+    for bbox in to_numpy(output['boxes'][high_scores_idxs][post_nms_idxs]):
+        bboxes.append(list(map(int, bbox.tolist())))
+    return bboxes,keypoints
 
 
 def plot_loss(loss_dict, save_folder, epochs):
@@ -203,3 +231,5 @@ def plot_loss(loss_dict, save_folder, epochs):
         ax.set_xlabel('Step')
         ax.set_ylabel('Loss')
         fig.savefig(os.path.join(save_folder,'loss_all_steps.png'))
+
+

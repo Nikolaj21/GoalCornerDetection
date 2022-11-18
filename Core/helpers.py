@@ -43,7 +43,7 @@ def to_torch(nparray):
         print('could not convert to torch tensor. Check type of input')
         return nparray
 
-def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0.25,batch_size=1, data_amount=1, num_workers=0, shuffle_dataset=False, shuffle_dataset_seed=None, shuffle_epoch=False, shuffle_epoch_seed=0, pin_memory=False):
+def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0.25,batch_size=1, data_amount=1, num_workers=0, shuffle_dataset=False, shuffle_dataset_seed=None, shuffle_epoch=False, shuffle_epoch_seed=None, pin_memory=False):
     '''
     Function that splits data from dataset class into a train and validation set
 
@@ -65,8 +65,7 @@ def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0
     train_subset = Subset(DatasetClass_train,train_indices)
     val_subset = Subset(DatasetClass_val,val_indices)
     
-    if shuffle_epoch:
-        if shuffle_epoch_seed:
+    if shuffle_epoch and shuffle_epoch_seed:
             torch.manual_seed(shuffle_epoch_seed)
 
     train_loader = DataLoader(train_subset,
@@ -105,7 +104,7 @@ def train_transform():
     return A.Compose(
         [A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, brightness_by_max=True, p=0.5),
         A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
-        A.Blur(blur_limit=10, p=0.5),
+        # A.Blur(blur_limit=10, p=0.5),
         A.Rotate(limit=3,p=0.5)
         ],
         keypoint_params=A.KeypointParams(format='xy'), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
@@ -155,11 +154,12 @@ def find_pixelerror(model,data_loader,device):
             outputs = model(images)
         # move outputs to cpu
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
-        # extract the euclidean distance (in pixels) between every ground-truth and detection keypoint in the batch, and threshold them to return the matches
-        distances = [np.linalg.norm(dt[:2]-gt[:2])
-        for target, output in zip(targets, outputs)
-        for obj_gt,obj_dt in zip(target['keypoints'],output['keypoints'])
-        for gt, dt in zip(obj_gt,obj_dt)]
+        # extract the euclidean distance error (in pixels) between every ground-truth and detection keypoint in the batch. Also return image_ids for every distance measure for reference
+        distances = [(target['image_id'].item(),np.linalg.norm(dt[:2]-gt[:2]))
+                    for target, output in zip(targets, outputs)
+                    for obj_gt,obj_dt in zip(target['keypoints'],output['keypoints'])
+                    for gt, dt in zip(obj_gt,obj_dt)]
+
         # add pixelerrors for batch to list
         pixelerrors_all.extend(distances)
         # add the pixelerrors in each corner, using the fact that the corners show up in set intervals of 4 (for N_keypoints=4)
@@ -193,7 +193,7 @@ def eval_PCK(model, data_loader, device, thresholds=[50]):
     print(f'Running PCK evaluation on all thresholds...')
     start_time = time.time()
     PCK = {
-        key:{threshold: np.count_nonzero([error < threshold for error in errors]) / len(errors) for threshold in thresholds}
+        key:{threshold: np.count_nonzero([error < threshold for _,error in errors]) / len(errors) for threshold in thresholds}
         for key,errors in pixelerrors.items()
         }
 
@@ -201,69 +201,6 @@ def eval_PCK(model, data_loader, device, thresholds=[50]):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f'Total time: {total_time_str} ({total_time/len(thresholds):.4f} s / threshold)')
     return PCK,pixelerrors
-
-def get_prediction_images(model,data_loader,device):
-    """
-    Takes model, data and list of image_ids and returns
-    list of prediction images for the model of type
-    data_loader: pytorch dataloader
-    """
-    model.eval()
-    model.to(device)
-    # FIXME Consider which photos to show each time, if it should be the first case in the data_loader or what
-    images,targets = next(iter(data_loader))
-    images = list(image.to(device) for image in images)
-    image_ids = [target['image_id'] for target in targets]
-    # images = list(dataset.__getitem__(idx)[0].to(device) for idx in image_ids)
-    # outputs will be a list of dict of len == len(image_ids)
-    with torch.no_grad():
-        outputs = model(images)
-    pred_images = {}
-    for id,image,output in zip(image_ids,images,outputs):
-        bboxes,keypoints = NMS(output,score_thresh=0.7,iou_thresh=0.3)
-        pred_image = make_pred_image(image, bboxes, keypoints)
-        pred_images[id] = pred_image
-    return pred_images
-
-def make_pred_image(image, bboxes, keypoints):
-    """
-    Adds bboxes and keypoints to the image
-    returns np.array for the image
-    """
-    image = (im_to_numpy(image) * 255).astype(np.uint8)
-    keypoints_classes_ids2names = {0: 'top-left', 1: 'top-right', 2: 'bot-left', 3: 'bot-right'}
-
-    for bbox in bboxes:
-        start_point = (bbox[0], bbox[1])
-        end_point = (bbox[2], bbox[3])
-        image = cv2.rectangle(image.copy(), start_point, end_point, (0,255,0), 2)
-    
-    for kps in keypoints:
-        for idx, kp in enumerate(kps):
-            image = cv2.circle(image.copy(), tuple(kp), 5, (255,0,0), 10)
-            image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
-    return image
-
-def NMS(output,score_thresh=0.7,iou_thresh=0.3):
-    """
-    Perform non-maximum suppresion on a single output
-    output: dict containing the prediction results for image.
-        keys (minimum): keypoints, scores, boxes
-    returns the updated bboxes and keypoints that passed nms
-    """
-    scores = to_numpy(output['scores'])
-
-    high_scores_idxs = np.where(scores > score_thresh)[0].tolist() # Indexes of boxes with scores > score_thresh
-    post_nms_idxs = torchvision.ops.nms(output['boxes'][high_scores_idxs], output['scores'][high_scores_idxs], iou_thresh).cpu().numpy() # Indexes of boxes left after applying NMS (iou_threshold=iou_thresh)
-
-    keypoints = []
-    for kps in to_numpy(output['keypoints'][high_scores_idxs][post_nms_idxs]):
-        keypoints.append([list(map(int, kp[:2])) for kp in kps])
-
-    bboxes = []
-    for bbox in to_numpy(output['boxes'][high_scores_idxs][post_nms_idxs]):
-        bboxes.append(list(map(int, bbox.tolist())))
-    return bboxes,keypoints
 
 def make_PCK_plot_objects(PCK,thresholds):
     PCK_plot_objects = {}
@@ -276,7 +213,8 @@ def make_PCK_plot_objects(PCK,thresholds):
 
 def prediction_outliers(errors_dict):
     data = []
-    for cat,errors in errors_dict.items():
+    for cat,metrics in errors_dict.items():
+        _,errors = zip(*metrics)
         Ndata = len(errors)
         minval = np.min(errors)
         maxval = np.max(errors)
@@ -285,9 +223,10 @@ def prediction_outliers(errors_dict):
         median = np.median(errors)
         inlier_min = mean-3*std
         inlier_max = mean+3*std
-        outliers = [error for error in errors if not inlier_min <= error <= inlier_max]
+        outliers_tuplist = [(image_id,error) for image_id,error in metrics if not inlier_min <= error <= inlier_max]
+        outlier_ids,outliers = zip(*outliers_tuplist)
         num_outliers = len(outliers)
         pct_outliers = num_outliers / Ndata
-        data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers))
-    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers'])
+        data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids))
+    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '\%outliers', 'outliers', 'outlier_im_ids'])
     return table
