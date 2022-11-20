@@ -297,5 +297,5 @@ def test(args):
 
 if __name__ == '__main__':
     args = get_args_parser().parse_args()
-    # main(args)
-    test(args)
+    main(args)
+    # test(args)
