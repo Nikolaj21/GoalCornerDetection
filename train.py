@@ -92,8 +92,8 @@ def get_args_parser(add_help=True):
     parser.add_argument("--data-amount", default=1, type=float, help="fraction of data that should be used (float between 0 and 1)")
     parser.add_argument("--shuffle-dataset", default=True, type=bool, help="Shuffle which data ends up in train set and validation set. Default: True")
     parser.add_argument("--shuffle-epoch", default=True, type=bool, help="Shuffle data in each epoch. Default: True")
-    parser.add_argument("--shuffle-dataset-seed", default=None, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: None")
-    parser.add_argument("--shuffle-epoch-seed", default=None, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: None")
+    parser.add_argument("--shuffle-dataset-seed", default=-1, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: None")
+    parser.add_argument("--shuffle-epoch-seed", default=-1, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: None")
 
     return parser
 
@@ -289,8 +289,13 @@ def main(args):
 
 def test(args):
     # just a test function
+    print(f'shuffle dataset: {args.shuffle_dataset}')
+    print(f'shuffle dataset seed: {args.shuffle_dataset_seed}')
+    print(f'shuffle epoch: {args.shuffle_epoch}')
+    print(f'shuffle epoch seed: {args.shuffle_epoch_seed}')
     pass
 
 if __name__ == '__main__':
     args = get_args_parser().parse_args()
-    main(args)
+    # main(args)
+    test(args)

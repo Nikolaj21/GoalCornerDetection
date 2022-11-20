@@ -7,8 +7,6 @@ from tqdm.notebook import tqdm
 import time
 import datetime
 from collections import deque
-import torchvision
-import cv2
 import wandb
 
 # helper / utility functions
@@ -43,11 +41,13 @@ def to_torch(nparray):
         print('could not convert to torch tensor. Check type of input')
         return nparray
 
-def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0.25,batch_size=1, data_amount=1, num_workers=0, shuffle_dataset=False, shuffle_dataset_seed=None, shuffle_epoch=False, shuffle_epoch_seed=None, pin_memory=False):
+def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0.25,batch_size=1, data_amount=1, num_workers=0, shuffle_dataset=False, shuffle_dataset_seed=-1, shuffle_epoch=False, shuffle_epoch_seed=-1, pin_memory=False):
     '''
     Function that splits data from dataset class into a train and validation set
 
     validation_split: the percentage of the data that should be in the validation set
+    shuffle_dataset_seed: seed for shuffling the dataset into training and validation set. if -1, no seed is set.
+    shuffle_epoch_seed: seed for shuffling the data in the dataloader at every epoch. if -1, no seed is set.
     '''
     assert len(DatasetClass_train) == len(DatasetClass_val), f'Size of DatasetClass for train ({len(DatasetClass_train)}) and val ({len(DatasetClass_val)}) is different, check input'
     # Creating data indices for training and validation splits:
@@ -55,18 +55,18 @@ def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0
     indices = list(range(dataset_size))
     split = int(np.floor(validation_split * dataset_size))
 
+    # if true and seed is set, shuffle the dataset randomly into a train and val set
     if shuffle_dataset:
-        if shuffle_dataset_seed:
+        if shuffle_dataset_seed != -1:
             np.random.seed(shuffle_dataset_seed)
         np.random.shuffle(indices)
     train_indices, val_indices = indices[split:], indices[:split]
-    # Creating PT data samplers and loaders:
-    # train_sampler = SubsetRandomSampler(train_indices)
-    # val_sampler = SubsetRandomSampler(val_indices)
+    # Use pytorch subset function to sample subset of data indices for each dataloader
     train_subset = Subset(DatasetClass_train,train_indices)
     val_subset = Subset(DatasetClass_val,val_indices)
     
-    if shuffle_epoch and shuffle_epoch_seed:
+    # if true and seed is set, shuffle data in dataloaders at every epoch
+    if shuffle_epoch and shuffle_epoch_seed != -1:
             torch.manual_seed(shuffle_epoch_seed)
 
     train_loader = DataLoader(train_subset,
@@ -81,19 +81,6 @@ def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0
                                     num_workers=num_workers,
                                     pin_memory=pin_memory,
                                     shuffle=False)
-    # train_loader = DataLoader(DatasetClass_train,
-    #                             batch_size=batch_size, 
-    #                             sampler=train_sampler,
-    #                             collate_fn=collate_fn,
-    #                             num_workers=num_workers,
-    #                             pin_memory=pin_memory)
-    # validation_loader = DataLoader(DatasetClass_val,
-    #                                 batch_size=batch_size,
-    #                                 sampler=val_sampler,
-    #                                 collate_fn=collate_fn,
-    #                                 num_workers=num_workers,
-    #                                 pin_memory=pin_memory)
-    # print(f'###################\nTotal size of dataset: {dataset_size}\nTrain data --> Size: {len(train_loader.sampler)}, batch size: {train_loader.batch_size}\nValidation data --> Size: {len(validation_loader.sampler)}, batch size: {validation_loader.batch_size}')
     print(f'###################\nTotal size of dataset: {dataset_size}\nTrain data --> Size: {len(train_loader.dataset)}, batch size: {train_loader.batch_size}\nValidation data --> Size: {len(validation_loader.dataset)}, batch size: {validation_loader.batch_size}')
 
     return train_loader,validation_loader

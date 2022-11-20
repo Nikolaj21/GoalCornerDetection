@@ -44,8 +44,6 @@ def plot_batch_keypoints(batch,figsize=(10,10), show_qualityfactor=False):
         if show_qualityfactor:
             ax.set_title(f'Quality: {calibrationquality[i].detach().cpu():.2f}')
 
-
-
 def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=None, keypoints_original=None, title_old='Original Results', title_new='New results',pred_score=None):
 
     fontsize = 18
@@ -84,7 +82,6 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
 
         ax[1].imshow(image)
         ax[1].set_title(f'{title_new}, Prediction confidence: {pred_score:.4f}', fontsize=fontsize)
-
 
 def visualize_results(model, images, targets, device, plotdim, score_thresh=0.7, iou_thresh=0.3, opaqueness=0.4):
     '''
@@ -135,7 +132,6 @@ def get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thres
     else:
         return pred_images
     
-
 def make_pred_image(image, bboxes, keypoints, keypointsGT, opaqueness=0.4):
     """
     Adds bboxes and keypoints to a single image
@@ -190,7 +186,6 @@ def NMS(output,score_thresh=0.7,iou_thresh=0.3):
         bboxes.append(list(map(int, bbox.tolist())))
     return bboxes,keypoints
 
-
 def plot_loss(loss_dict, save_folder, epochs):
         '''
         plot losses from a loss dict
@@ -231,5 +226,4 @@ def plot_loss(loss_dict, save_folder, epochs):
         ax.set_xlabel('Step')
         ax.set_ylabel('Loss')
         fig.savefig(os.path.join(save_folder,'loss_all_steps.png'))
-
 
