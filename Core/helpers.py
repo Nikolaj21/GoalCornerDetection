@@ -56,7 +56,8 @@ def split_data_train_test(DatasetClass_train,DatasetClass_val,validation_split=0
     split = int(np.floor(validation_split * dataset_size))
 
     if shuffle_dataset:
-        np.random.seed(shuffle_dataset_seed)
+        if shuffle_dataset_seed:
+            np.random.seed(shuffle_dataset_seed)
         np.random.shuffle(indices)
     train_indices, val_indices = indices[split:], indices[:split]
     # Creating PT data samplers and loaders:
@@ -228,5 +229,5 @@ def prediction_outliers(errors_dict):
         num_outliers = len(outliers)
         pct_outliers = num_outliers / Ndata
         data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids))
-    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '\%outliers', 'outliers', 'outlier_im_ids'])
+    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers', 'outlier_im_ids'])
     return table

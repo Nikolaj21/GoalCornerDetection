@@ -193,7 +193,7 @@ class GoalCalibrationDatasetAUG(Dataset):
         self.img_list = sorted(glob.glob(datapath + '/*/*.jpg'))
         self.annotation_list = sorted(glob.glob(datapath + '/FootballGoalCorners/AnnotationFiles/*.json'))
         ### remove image paths from list if they aren't of category 'free kick'
-        self.img_list_filtered, self.annotation_list_filtered = filter_data(self.img_list,self.annotation_list)
+        self.img_list_filtered, self.annotation_list_filtered,self.old_idxs = filter_data(self.img_list,self.annotation_list)
         self.istrain = istrain
         self.transforms = transforms
         
@@ -248,7 +248,8 @@ class GoalCalibrationDatasetAUG(Dataset):
             'keypoints': keypoints_tensor[None,:],
             'radii': radii,
             'area': (bboxes_tensor[:, 3] - bboxes_tensor[:, 1]) * (bboxes_tensor[:, 2] - bboxes_tensor[:, 0]),
-            'iscrowd': torch.zeros(len(bboxes), dtype=torch.int64)
+            'iscrowd': torch.zeros(len(bboxes), dtype=torch.int64),
+            'old_image_id': torch.tensor((self.old_idxs[idx]))
         }
 
         return img_tensor,target_dict
@@ -257,9 +258,12 @@ def filter_data(img_list,annotation_list):
     ### remove image paths from list if they aren't of category 'free kick'
     img_list_filtered = []
     annotation_list_filtered = []
-    for path in annotation_list:
+    old_idxs = []
+    for idx,path in enumerate(annotation_list):
         annotation_json = json.load(open(path,'r',encoding='latin'))
         if annotation_json['Annotations']['0'][-1]['Attributes']['calibration_type'] == 'freekick':
+            # save the old image id for reference
+            old_idxs.append(idx)
             # add only annotation paths of type 'freekick'
             annotation_list_filtered.append(path)
             # make correct path for images
@@ -271,4 +275,4 @@ def filter_data(img_list,annotation_list):
             img_list_filtered.append(temp_img_path)
     print(f'All images: {len(img_list)}')
     print(f'Filtered images: {len(img_list_filtered)}')
-    return img_list_filtered, annotation_list_filtered
+    return img_list_filtered, annotation_list_filtered,old_idxs

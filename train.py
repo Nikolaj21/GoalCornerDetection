@@ -90,6 +90,10 @@ def get_args_parser(add_help=True):
     parser.add_argument("--pckthreshup", default=200, type=int, help="Upper threshold on the pixel error when when calculating PCK")
     parser.add_argument("--predims_every", default=1, type=int, help="Interval (in epochs) in which to save intermittent prediction images from the validation set")
     parser.add_argument("--data-amount", default=1, type=float, help="fraction of data that should be used (float between 0 and 1)")
+    parser.add_argument("--shuffle-dataset", default=True, type=bool, help="Shuffle which data ends up in train set and validation set. Default: True")
+    parser.add_argument("--shuffle-epoch", default=True, type=bool, help="Shuffle data in each epoch. Default: True")
+    parser.add_argument("--shuffle-dataset-seed", default=None, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: None")
+    parser.add_argument("--shuffle-epoch-seed", default=None, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: None")
 
     return parser
 
@@ -101,12 +105,19 @@ def main(args):
         project="GoalCornerDetection",
         name=args.model_name,
         config={
+            "original_model_name": args.model_name,
             "epochs": args.epochs,
             "batch_size": args.batch_size,
-            "lr": args.lr,
             "optimizer": args.opt,
+            "lr": args.lr,
             "momentum": args.momentum,
-            "weight_decay": args.weight_decay
+            "weight_decay": args.weight_decay,
+            "data_amount": args.data_amount,
+            "validation_split": args.validation_split,
+            "shuffle_dataset": args.shuffle_dataset,
+            "shuffle_dataset_seed": args.shuffle_dataset_seed,
+            "shuffle_epoch": args.shuffle_epoch,
+            "shuffle_epoch_seed": args.shuffle_epoch_seed
             }
         )
     # Define custom x-axis metric
@@ -156,10 +167,10 @@ def main(args):
                                                             batch_size=args.batch_size,
                                                             data_amount=args.data_amount,
                                                             num_workers=args.workers,
-                                                            shuffle_dataset=True,
-                                                            shuffle_dataset_seed=21,
-                                                            shuffle_epoch = False,
-                                                            shuffle_epoch_seed=None,
+                                                            shuffle_dataset=args.shuffle_dataset,
+                                                            shuffle_dataset_seed=args.shuffle_dataset_seed,
+                                                            shuffle_epoch = args.shuffle_epoch,
+                                                            shuffle_epoch_seed=args.shuffle_epoch_seed,
                                                             pin_memory=False) # pin_memory was false before running last training
     # Setting hyper-parameters
     num_classes = 2 # 1 class (goal) + background
