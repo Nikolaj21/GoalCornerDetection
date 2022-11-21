@@ -90,14 +90,17 @@ def get_args_parser(add_help=True):
     parser.add_argument("--pckthreshup", default=200, type=int, help="Upper threshold on the pixel error when when calculating PCK")
     parser.add_argument("--predims_every", default=1, type=int, help="Interval (in epochs) in which to save intermittent prediction images from the validation set")
     parser.add_argument("--data-amount", default=1, type=float, help="fraction of data that should be used (float between 0 and 1)")
-    parser.add_argument("--shuffle-dataset", default=True, type=bool, help="Shuffle which data ends up in train set and validation set. Default: True")
-    parser.add_argument("--shuffle-epoch", default=True, type=bool, help="Shuffle data in each epoch. Default: True")
-    parser.add_argument("--shuffle-dataset-seed", default=-1, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: None")
-    parser.add_argument("--shuffle-epoch-seed", default=-1, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: None")
+    parser.add_argument("--shuffle-dataset", choices=('True','False'), default=True, help="Shuffle which data ends up in train set and validation set. Default: True")
+    parser.add_argument("--shuffle-epoch", choices=('True','False'), default=True, help="Shuffle data in each epoch. Default: True")
+    parser.add_argument("--shuffle-dataset-seed", default=-1, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: -1, means no seed is set.")
+    parser.add_argument("--shuffle-epoch-seed", default=-1, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: -1, means no seed is set.")
 
     return parser
 
 def main(args):
+    # convert these arguments from strings to boolean
+    args.shuffle_dataset = True if args.shuffle_dataset=='True' else False
+    args.shuffle_epoch = True if args.shuffle_epoch=='True' else False
     # set wandb api key as environment variable
     export_wandb_api()
     # initialize wandb run
@@ -289,11 +292,25 @@ def main(args):
 
 def test(args):
     # just a test function
-    print(f'shuffle dataset: {args.shuffle_dataset}')
+    print('before change')
+    print(f'shuffle dataset: {args.shuffle_dataset}, type: {type(args.shuffle_dataset)}')
     print(f'shuffle dataset seed: {args.shuffle_dataset_seed}')
-    print(f'shuffle epoch: {args.shuffle_epoch}')
+    print(f'shuffle epoch: {args.shuffle_epoch}, type: {type(args.shuffle_epoch)}')
     print(f'shuffle epoch seed: {args.shuffle_epoch_seed}')
+    
+    args.shuffle_dataset = True if args.shuffle_dataset=='True' else False
+    args.shuffle_epoch = True if args.shuffle_epoch=='True' else False
+
+    print('after change')
+    print(f'shuffle dataset: {args.shuffle_dataset}, type: {type(args.shuffle_dataset)}')
+    print(f'shuffle epoch: {args.shuffle_epoch}, type: {type(args.shuffle_epoch)}')
+
+    if args.shuffle_dataset:
+        print('hej1')
+    if args.shuffle_epoch:
+        print('hej2')
     pass
+    
 
 if __name__ == '__main__':
     args = get_args_parser().parse_args()
