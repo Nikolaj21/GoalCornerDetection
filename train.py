@@ -90,10 +90,10 @@ def get_args_parser(add_help=True):
     parser.add_argument("--pckthreshup", default=200, type=int, help="Upper threshold on the pixel error when when calculating PCK")
     parser.add_argument("--predims_every", default=1, type=int, help="Interval (in epochs) in which to save intermittent prediction images from the validation set")
     parser.add_argument("--data-amount", default=1, type=float, help="fraction of data that should be used (float between 0 and 1)")
-    parser.add_argument("--shuffle-dataset", default=True, type=bool, help="Shuffle which data ends up in train set and validation set. Default: True")
-    parser.add_argument("--shuffle-epoch", default=True, type=bool, help="Shuffle data in each epoch. Default: True")
-    parser.add_argument("--shuffle-dataset-seed", default=-1, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: None")
-    parser.add_argument("--shuffle-epoch-seed", default=-1, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: None")
+    parser.add_argument("--shuffle-dataset", default=True, choices=('True','False'), help="Shuffle which data ends up in train set and validation set. Default: True")
+    parser.add_argument("--shuffle-epoch", default=True, choices=('True','False'), help="Shuffle data in each epoch. Default: True")
+    parser.add_argument("--shuffle-dataset-seed", default=-1, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: -1, means no seed is set.")
+    parser.add_argument("--shuffle-epoch-seed", default=-1, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: -1, means no seed is set.")
 
     return parser
 
