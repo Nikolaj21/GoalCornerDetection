@@ -15,8 +15,8 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
     # increase window size to be the number of batches, so we can save loss of every step in the MetricLogger
-    # for loss_type in ["loss","loss_classifier","loss_box_reg","loss_keypoint","loss_objectness","loss_rpn_box_reg"]:
-    #     metric_logger.add_meter(loss_type, utils.SmoothedValue(window_size=len(data_loader)))
+    for loss_type in ["loss","loss_classifier","loss_box_reg","loss_keypoint","loss_objectness","loss_rpn_box_reg"]:
+        metric_logger.add_meter(loss_type, utils.SmoothedValue(window_size=len(data_loader)))
 
     header = f"Epoch: [{epoch}]"
 

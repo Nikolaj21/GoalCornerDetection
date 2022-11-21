@@ -5,8 +5,8 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
-from Core.helpers import split_data_train_test, train_transform, eval_PCK
-from Core.plottools import plot_loss
+from Core.helpers import split_data_train_test, train_transform, eval_PCK, make_PCK_plot_objects, prediction_outliers
+from Core.plottools import plot_loss, get_prediction_images
 from Core.DataLoader import GoalCalibrationDataset,GoalCalibrationDatasetAUG
 from utils import DATA_DIR, export_wandb_api
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
@@ -17,9 +17,6 @@ from Core.torchhelpers.engine import train_one_epoch, evaluate
 from torchvision.models.detection.rpn import AnchorGenerator
 import json
 import wandb
-
-# function to set api key as environment variable
-export_wandb_api()
 
 def validate_epoch(model, dataloader, device, epoch, print_freq):
     '''
@@ -78,7 +75,7 @@ def get_args_parser(add_help=True):
 
     parser.add_argument("--data-dir", default=DATA_DIR, type=str, help="dataset directory path")
     parser.add_argument("-b", "--batch-size", default=4, type=int, help="images per gpu, the total batch size is $NGPU x batch_size")
-    parser.add_argument("--validation-split", default=0.25, type=float, help="How much of the data should be in the validation set (float between 0 and 1)")
+    parser.add_argument("--validation-split", default=0.25, type=float, help="Fraction of the data to use as the validation set (float between 0 and 1)")
     parser.add_argument("--epochs", default=2, type=int, metavar="N", help="number of total epochs to run")
     parser.add_argument("--workers", default=6, type=int, metavar="N", help="number of data loading workers (default: 6)")
     parser.add_argument("--opt", default="adam", type=str, help="optimizer, either sgd or adam")
@@ -86,18 +83,59 @@ def get_args_parser(add_help=True):
     parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum to use in the optimizer")
     parser.add_argument("--weight-decay", default=0.0005, type=float, dest="weight_decay", metavar="W", help="weight decay (default: 5e-4)")
     parser.add_argument("--print-freq", default=100, type=int, help="print frequency")
-    parser.add_argument("--output-dir", default="/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/", type=str, help="path to save outputs")
+    parser.add_argument("--output-dir", default="/zhome/60/1/118435/Master_Thesis/Runs/", type=str, help="path to save outputs")
     parser.add_argument("--model-name", default="tester_model", type=str, help="Unique folder name for saving model results")
-    parser.add_argument("--test-only", dest="test_only", action="store_true", help="Only test the model")
+    parser.add_argument("--test-only", dest="test_only", action="store_true", help="If option is set, the script willonly test the model")
     parser.add_argument("--data-aug", dest="data_aug", action="store_true", help="Augment data during training")
+    parser.add_argument("--pckthreshup", default=200, type=int, help="Upper threshold on the pixel error when when calculating PCK")
+    parser.add_argument("--predims_every", default=1, type=int, help="Interval (in epochs) in which to save intermittent prediction images from the validation set")
+    parser.add_argument("--data-amount", default=1, type=float, help="fraction of data that should be used (float between 0 and 1)")
+    parser.add_argument("--shuffle-dataset", default=True, type=bool, help="Shuffle which data ends up in train set and validation set. Default: True")
+    parser.add_argument("--shuffle-epoch", default=True, type=bool, help="Shuffle data in each epoch. Default: True")
+    parser.add_argument("--shuffle-dataset-seed", default=-1, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: None")
+    parser.add_argument("--shuffle-epoch-seed", default=-1, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: None")
 
     return parser
 
 def main(args):
+    # set wandb api key as environment variable
+    export_wandb_api()
+    # initialize wandb run
+    wandb.init(
+        project="GoalCornerDetection",
+        name=args.model_name,
+        config={
+            "original_model_name": args.model_name,
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "optimizer": args.opt,
+            "lr": args.lr,
+            "momentum": args.momentum,
+            "weight_decay": args.weight_decay,
+            "data_amount": args.data_amount,
+            "validation_split": args.validation_split,
+            "shuffle_dataset": args.shuffle_dataset,
+            "shuffle_dataset_seed": args.shuffle_dataset_seed,
+            "shuffle_epoch": args.shuffle_epoch,
+            "shuffle_epoch_seed": args.shuffle_epoch_seed
+            }
+        )
+    # Define custom x-axis metric
+    wandb.define_metric("train/step")
+    # set all other train/ metrics to use this step
+    wandb.define_metric("train/*", step_metric="train/step", summary="min")
+    # Do the same, but for validation metrics
+    wandb.define_metric("validation/step")
+    wandb.define_metric("validation/*", step_metric="validation/step", summary="min")
+    # Do the same, but for epoch metric
+    wandb.define_metric("epoch")
+    wandb.define_metric("epoch_metrics/loss_avg", step_metric="epoch", summary="min")
+    wandb.define_metric("epoch_metrics/loss_total", step_metric="epoch", summary="min")
+    
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print(f'Running on {device}')
     ### Set save path ###
-    save_folder = args.output_dir + args.model_name + f'_{args.epochs}epochs/'
+    save_folder = os.path.join(args.output_dir, args.model_name + f'_{args.epochs}epochs/')
     # print options used in training
     print(f"""
     ####################
@@ -127,14 +165,16 @@ def main(args):
                                                             GoalData_val,
                                                             validation_split=args.validation_split,
                                                             batch_size=args.batch_size,
-                                                            shuffle_dataset=True,
-                                                            shuffle_seed=None,
-                                                            data_amount=1,
+                                                            data_amount=args.data_amount,
                                                             num_workers=args.workers,
+                                                            shuffle_dataset=args.shuffle_dataset,
+                                                            shuffle_dataset_seed=args.shuffle_dataset_seed,
+                                                            shuffle_epoch = args.shuffle_epoch,
+                                                            shuffle_epoch_seed=args.shuffle_epoch_seed,
                                                             pin_memory=False) # pin_memory was false before running last training
-
     # Setting hyper-parameters
     num_classes = 2 # 1 class (goal) + background
+    #FIXME better aspect ratios for the anchor boxes needs to be decided. I would drop anything below 1 and above 3
     anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
     model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=4,rpn_anchor_generator=anchor_generator)
     model.to(device)
@@ -176,31 +216,6 @@ def main(args):
         # torch.backends.cudnn.deterministic = True
         evaluate(model, validation_loader, device=device)
         return
-
-    # initialize wandb run
-    wandb.init(
-        project="GoalCornerDetection",
-        name=args.model_name,
-        config={
-            "epochs": args.epochs,
-            "batch_size": args.batch_size,
-            "lr": args.lr,
-            "optimizer": args.opt,
-            "momentum": args.momentum,
-            "weight_decay": args.weight_decay
-            }
-        )
-    # Define custom x-axis metric
-    wandb.define_metric("train/step")
-    # set all other train/ metrics to use this step
-    wandb.define_metric("train/*", step_metric="train/step", summary="min")
-    # Do the same, but for validation metrics
-    wandb.define_metric("validation/step")
-    wandb.define_metric("validation/*", step_metric="validation/step", summary="min")
-    # Do the same, but for epoch metric
-    wandb.define_metric("epoch")
-    wandb.define_metric("epoch_metrics/loss_avg", step_metric="epoch", summary="min")
-    wandb.define_metric("epoch_metrics/loss_total", step_metric="epoch", summary="min")
     
 
     ###################### Training ####################################
@@ -228,7 +243,7 @@ def main(args):
         loss_dict['val']['keypoint_mean'].append(metric_logger_val.meters['loss_keypoint'].global_avg)
         loss_dict['val']['keypoint_total'].append(metric_logger_val.meters['loss_keypoint'].total)
 
-         # log metrics to wandb dashboard
+         # log epoch metrics to wandb dashboard
         metrics_epoch = {
             "epoch_metrics/loss_avg": {
                 "train":metric_logger.meters['loss_keypoint'].global_avg,
@@ -241,8 +256,15 @@ def main(args):
             "epoch": epoch}
         wandb.log(metrics_epoch)
 
-        if epoch % 5 == 0:
-            pass
+        # get intermediate prediction images and log in wandb
+        if epoch % args.predims_every == 0 or epoch == (args.epochs-1):
+            # FIXME Consider which photos to show each time, if it should be the first case in the data_loader or what
+            images,targets = next(iter(validation_loader))
+            pred_images = get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4)
+
+            pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
+            pred_images_dict['epoch'] = epoch
+            wandb.log(pred_images_dict)
 
     print('\nFINISHED TRAINING :) #################################################################################\n')
 
@@ -250,26 +272,30 @@ def main(args):
     evaluate(model, validation_loader, device)
     ###################### save losses and weights
     save_model(save_folder=save_folder, model=model, loss_dict=loss_dict)
+
     # plot losses and save as images in save_folder
-    plot_loss(loss_dict,save_folder,args.epochs)
-    # Evaluate PCK for all the keypoints
-    thresholds=[10,30,50,75,100]
-    PCK = eval_PCK(model,validation_loader,device,thresholds=thresholds)
-    for pcktype,pck in PCK.items():
-        print(f'Percentage of Correct Keypoints (PCK) {pcktype}\n{pck}')
-    # Log the PCK values in wandb
-    for threshold in thresholds:
-        wandb.run.summary[f'PCK@{threshold}pix'] = PCK["all_corners"][threshold]
-        wandb.run.summary[f'PCK_TL@{threshold}pix'] = PCK["top_left"][threshold]
-        wandb.run.summary[f'PCK_TR@{threshold}pix'] = PCK["top_right"][threshold]
-        wandb.run.summary[f'PCK_BL@{threshold}pix'] = PCK["bot_left"][threshold]
-        wandb.run.summary[f'PCK_BR@{threshold}pix'] = PCK["bot_right"][threshold]
+    # plot_loss(loss_dict,save_folder,args.epochs)
     
+    # Evaluate PCK for all the keypoints
+    thresholds=np.arange(1,args.pckthreshup+1)
+    PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds)
+    # Log the PCK values in wandb
+    PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
+    wandb.log(PCK_plot_objects)
+    
+    # Find the outliers in predictions and log them
+    outliertable = prediction_outliers(pixelerrors)
+    wandb.log({"outliers_table": outliertable})
 
 def test(args):
     # just a test function
+    print(f'shuffle dataset: {args.shuffle_dataset}')
+    print(f'shuffle dataset seed: {args.shuffle_dataset_seed}')
+    print(f'shuffle epoch: {args.shuffle_epoch}')
+    print(f'shuffle epoch seed: {args.shuffle_epoch_seed}')
     pass
 
 if __name__ == '__main__':
     args = get_args_parser().parse_args()
     main(args)
+    # test(args)
