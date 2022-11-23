@@ -1,5 +1,3 @@
-import sys
-sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
 import os
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
@@ -67,7 +65,6 @@ def save_model(save_folder, model, loss_dict):
         json.dump(loss_dict, file, indent=4)
     torch.save(model.state_dict(), os.path.join(save_folder,'weights.pth'))
     print(f'Model weights and losses saved to {save_folder}')
-
 
 def get_args_parser(add_help=True):
     import argparse
@@ -281,7 +278,7 @@ def main(args):
     
     # Evaluate PCK for all the keypoints
     thresholds=np.arange(1,args.pckthreshup+1)
-    PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds)
+    PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds, num_objects=1)
     # Log the PCK values in wandb
     PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
     wandb.log(PCK_plot_objects)
@@ -297,13 +294,6 @@ def test(args):
     print(f'shuffle dataset seed: {args.shuffle_dataset_seed}')
     print(f'shuffle epoch: {args.shuffle_epoch}, type: {type(args.shuffle_epoch)}')
     print(f'shuffle epoch seed: {args.shuffle_epoch_seed}')
-    
-    args.shuffle_dataset = True if args.shuffle_dataset=='True' else False
-    args.shuffle_epoch = True if args.shuffle_epoch=='True' else False
-
-    print('after change')
-    print(f'shuffle dataset: {args.shuffle_dataset}, type: {type(args.shuffle_dataset)}')
-    print(f'shuffle epoch: {args.shuffle_epoch}, type: {type(args.shuffle_epoch)}')
 
     if args.shuffle_dataset:
         print('hej1')
