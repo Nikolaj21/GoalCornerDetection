@@ -129,7 +129,6 @@ def find_pixelerror(model, data_loader, device, num_objects):
     Returns:
         pixelerrors: a dict of all the pixel errors for every point in different categories.
     """
-    # num_keypoints = 4
     TL_label,TR_label,BL_label,BR_label = 1,2,3,4
     model.eval()
     model.to(device)
@@ -139,7 +138,7 @@ def find_pixelerror(model, data_loader, device, num_objects):
     print(f'Finding pixelerror for all predictions...')
     start_time = time.time()
     # Run through all images and get the pixel distance (error) between predictions and ground-truth
-    for images, targets in tqdm(data_loader):
+    for images, targets in data_loader:
         images = list(image.to(device) for image in images)
         # outputs will be a list of dict of len == batch_size
         with torch.no_grad():
@@ -202,8 +201,8 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     """
     Run PCK evaluation on model output for given thresholds
     thresholds: iterable of thresholds to calculate PCK for
+    num_object: number of object classes there are in each ground truth image
     """
-    # N_keypoints = 4
     # calculate pixel error between ground-truth and predictions for all corners, TL, TR, BL and BR (total of 5 lists (deques))
     pixelerrors = find_pixelerror(model,data_loader,device,num_objects=num_objects)
 
@@ -212,7 +211,6 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     # count the number of correctly classified keypoints according to every threshold
     print(f'Running PCK evaluation on all thresholds...')
     start_time = time.time()
-    #FIXME should divide by the total number of keypoints in each category, not the number of errors found, as these may not be the same
     # HACK hardcoded the number of total keypoints for every category in keypoint r-cnn with 4 keypoints to detect in every image
     N_ims = len(data_loader.dataset.indices)
     total_keypoints = {'all':N_ims*4, 'TL':N_ims, 'TR':N_ims, 'BL':N_ims, 'BR':N_ims}

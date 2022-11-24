@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from Core.helpers import split_data_train_test, train_transform, eval_PCK, make_PCK_plot_objects, prediction_outliers
 from Core.plottools import plot_loss, get_prediction_images
-from Core.DataLoader import GoalCalibrationDataset,GoalCalibrationDatasetAUG
+# from Core.DataLoader import GoalCalibrationDataset, GoalCalibrationDataset4boxes
 from utils import DATA_DIR, export_wandb_api
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
 # https://github.com/pytorch/vision/tree/main/references/detection
@@ -15,6 +15,7 @@ from Core.torchhelpers.engine import train_one_epoch, evaluate
 from torchvision.models.detection.rpn import AnchorGenerator
 import json
 import wandb
+import importlib
 
 def validate_epoch(model, dataloader, device, epoch, print_freq):
     '''
@@ -87,10 +88,12 @@ def get_args_parser(add_help=True):
     parser.add_argument("--pckthreshup", default=200, type=int, help="Upper threshold on the pixel error when when calculating PCK")
     parser.add_argument("--predims_every", default=1, type=int, help="Interval (in epochs) in which to save intermittent prediction images from the validation set")
     parser.add_argument("--data-amount", default=1, type=float, help="fraction of data that should be used (float between 0 and 1)")
-    parser.add_argument("--shuffle-dataset", choices=('True','False'), default=True, help="Shuffle which data ends up in train set and validation set. Default: True")
-    parser.add_argument("--shuffle-epoch", choices=('True','False'), default=True, help="Shuffle data in each epoch. Default: True")
+    parser.add_argument("--shuffle-dataset", choices=('True','False'), default='True', help="Shuffle which data ends up in train set and validation set. Default: True")
+    parser.add_argument("--shuffle-epoch", choices=('True','False'), default='True', help="Shuffle data in each epoch. Default: True")
     parser.add_argument("--shuffle-dataset-seed", default=-1, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: -1, means no seed is set.")
     parser.add_argument("--shuffle-epoch-seed", default=-1, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: -1, means no seed is set.")
+    parser.add_argument("--model-type", default="4Box", choices=('1boxOLD','1box','4box'), help="Changes which type of model is run. Affects which dataloader is called and some parameters of the model. Default: 4box")
+    parser.add_argument("--filter-data", choices=('True','False'), default='True', help="Shuffle which data ends up in train set and validation set. Default: True")
 
     return parser
 
@@ -98,6 +101,15 @@ def main(args):
     # convert these arguments from strings to boolean
     args.shuffle_dataset = True if args.shuffle_dataset=='True' else False
     args.shuffle_epoch = True if args.shuffle_epoch=='True' else False
+    args.filter_data = True if args.filter_data=='True' else False
+    # Update the dataloader to import and use depending on the model_type chosen
+    modeltype_to_dataloader = {
+        "1boxOLD": "GoalCalibrationDatasetOLD",
+        "1box":"GoalCalibrationDataset",
+        "4box":"GoalCalibrationDataset4boxes"
+        }
+    module = importlib.__import__('Core.DataLoader', fromlist=[modeltype_to_dataloader[args.model_type]])
+    DataClass = getattr(module, modeltype_to_dataloader[args.model_type])
     # set wandb api key as environment variable
     export_wandb_api()
     # initialize wandb run
@@ -106,6 +118,7 @@ def main(args):
         name=args.model_name,
         config={
             "original_model_name": args.model_name,
+            "model_type": args.model_type,
             "epochs": args.epochs,
             "batch_size": args.batch_size,
             "optimizer": args.opt,
@@ -117,7 +130,8 @@ def main(args):
             "shuffle_dataset": args.shuffle_dataset,
             "shuffle_dataset_seed": args.shuffle_dataset_seed,
             "shuffle_epoch": args.shuffle_epoch,
-            "shuffle_epoch_seed": args.shuffle_epoch_seed
+            "shuffle_epoch_seed": args.shuffle_epoch_seed,
+            "filter_data": args.filter_data
             }
         )
     # Define custom x-axis metric
@@ -142,6 +156,7 @@ def main(args):
     Training parameters
     #################### 
     model_name={args.model_name}
+    model_type={args.model_type}
     save_folder={save_folder}
     batch_size={args.batch_size}
     epochs={args.epochs}
@@ -153,12 +168,15 @@ def main(args):
 
     # initialize an instance of the dataloader class, one for train and one for validation
     if args.data_aug:
-        GoalData_train = GoalCalibrationDatasetAUG(args.data_dir,transforms=train_transform(),istrain=True)
+        GoalData_train = DataClass(args.data_dir,transforms=train_transform(),istrain=True,filter_data=args.filter_data)
     else:
-        GoalData_train = GoalCalibrationDatasetAUG(args.data_dir,transforms=None,istrain=False)
+        GoalData_train = DataClass(args.data_dir,transforms=None,istrain=False,filter_data=args.filter_data)
 
-    GoalData_val = GoalCalibrationDatasetAUG(args.data_dir,transforms=None,istrain=False)
+    GoalData_val = DataClass(args.data_dir,transforms=None,istrain=False, filter_data=args.filter_data)
 
+    num_objects = GoalData_val.num_objectclasses_per_image # number of object classes in this model
+    num_keypoints = GoalData_val.num_keypoints_per_object # number of keypoints to predict per object
+    num_classes = GoalData_val.num_objectclasses_per_image + 1 # number of classes in keypoint r-cnn model. It is the number of object classes + 1 (background class)
     # put dataloader into pytorch dataloader function with batch loading
     train_loader,validation_loader = split_data_train_test(
                                                             GoalData_train,
@@ -173,10 +191,9 @@ def main(args):
                                                             shuffle_epoch_seed=args.shuffle_epoch_seed,
                                                             pin_memory=False) # pin_memory was false before running last training
     # Setting hyper-parameters
-    num_classes = 2 # 1 class (goal) + background
     #FIXME better aspect ratios for the anchor boxes needs to be decided. I would drop anything below 1 and above 3
     anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
-    model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=4,rpn_anchor_generator=anchor_generator)
+    model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator)
     model.to(device)
     print(f'Model moved to device: {device}')
     params = [p for p in model.parameters() if p.requires_grad]
@@ -260,7 +277,7 @@ def main(args):
         if epoch % args.predims_every == 0 or epoch == (args.epochs-1):
             # FIXME Consider which photos to show each time, if it should be the first case in the data_loader or what
             images,targets = next(iter(validation_loader))
-            pred_images = get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4)
+            pred_images = get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4, num_objects=num_objects)
 
             pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
             pred_images_dict['epoch'] = epoch
@@ -278,7 +295,7 @@ def main(args):
     
     # Evaluate PCK for all the keypoints
     thresholds=np.arange(1,args.pckthreshup+1)
-    PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds, num_objects=1)
+    PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds, num_objects=num_objects)
     # Log the PCK values in wandb
     PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
     wandb.log(PCK_plot_objects)

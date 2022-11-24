@@ -11,7 +11,7 @@ from pycocotools.cocoeval import COCOeval
 
 
 class CocoEvaluator:
-    def __init__(self, coco_gt, iou_types):
+    def __init__(self, coco_gt, iou_types, kp_oks_sigma_init):
         if not isinstance(iou_types, (list, tuple)):
             raise TypeError(f"This constructor expects iou_types of type list or tuple, instead  got {type(iou_types)}")
         coco_gt = copy.deepcopy(coco_gt)
@@ -25,9 +25,10 @@ class CocoEvaluator:
             # changes made to make model work with 4 keypoints instead of the default of 17
             # makes a COCOeval object for each iou_type, in this case bbox and keypoints
             coco_eval = COCOeval(coco_gt, iouType=iou_type)
+            coco_eval.params.kpt_oks_sigmas = np.array([kp_oks_sigma_init['value'] for _ in range(kp_oks_sigma_init['N_kps'])])
             # coco_eval.params.kpt_oks_sigmas = np.array([.5, .5, .5, .5]) / 10.0
             #FIXME Temporary change while doing 4 corner method
-            coco_eval.params.kpt_oks_sigmas = np.array([.5]) / 10.0
+            # coco_eval.params.kpt_oks_sigmas = np.array([.5]) / 10.0
             self.coco_eval[iou_type] = coco_eval
             ###########################
 

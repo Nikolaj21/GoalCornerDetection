@@ -5,6 +5,7 @@ from Core.helpers import im_to_numpy,to_numpy
 import cv2
 import torchvision
 import os
+from collections import defaultdict
 
 def target_to_keypoints(target_dict):
     return target_dict['keypoints'][0,:,:2]
@@ -126,7 +127,8 @@ def get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thres
     for image,target,output in zip(images,targets,outputs):
         id = target['image_id']
         keypoints_gt = [[list(map(int, kp[:2])) for kp in kps] for kps in to_numpy(target['keypoints'])]
-        bboxes,keypoints = NMS(output,score_thresh=score_thresh,iou_thresh=iou_thresh, num_objects=num_objects)
+        #bboxes,keypoints = NMS(output,score_thresh=score_thresh,iou_thresh=iou_thresh, num_objects=num_objects)
+        bboxes,keypoints = filter_preds(output,num_objects=num_objects)
         pred_image = make_pred_image(image, bboxes, keypoints, keypoints_gt, opaqueness=opaqueness)
         pred_images[id] = pred_image
 
@@ -184,12 +186,40 @@ def NMS(output,score_thresh=0.7,iou_thresh=0.3, num_objects=1):
         high_scores_idxs = high_scores_idxs if len(high_scores_idxs) >= num_objects else [i for i in range(num_objects)]
     else: # take all predictions
         high_scores_idxs = [i for i in range(len(scores))]
-    
 
     post_nms_idxs = torchvision.ops.nms(output['boxes'][high_scores_idxs], output['scores'][high_scores_idxs], iou_thresh).cpu().numpy() # Indexes of boxes left after applying NMS (iou_threshold=iou_thresh)
 
     keypoints = output['keypoints'][high_scores_idxs][post_nms_idxs]
     bboxes = output['boxes'][high_scores_idxs][post_nms_idxs]
+
+    return bboxes,keypoints
+
+def filter_preds(output, num_objects=1):
+    """
+    Filter predictions from a single single output, so only the object with the highest confidence in each class remains
+    output: dict containing the prediction results for image.
+        keys (minimum): keypoints, scores, boxes
+    returns the updated bboxes and keypoints that passed the filtering
+    """
+    bboxes, keypoints = [],[]
+    label_to_dts = defaultdict(list)
+    # make a dictionary for the dts in every output that save the label, keypoints and scores, for later sorting
+    for label,kps,box,score in zip(output['labels'],output['keypoints'],output['boxes'],output['scores']):
+        label_to_dts[label.item()].append((box,kps,score.item()))
+    # compare the gt and dt of every object with the same label, taking only the highest scored one
+    for label in range(1,num_objects+1):
+        # get the obj_dt for this label (obj_dt may not exist)
+        obj_dt = label_to_dts.get(label)
+        # if there are any predictions with this label
+        if not obj_dt == None:
+            # take the set of keypoints with the highest score
+            obj_dt = sorted(obj_dt, key=lambda tup_box_kp_and_score: tup_box_kp_and_score[2], reverse=True)[0]
+            bboxes.append(obj_dt[0])
+            keypoints.append(obj_dt[1])
+
+
+    #keypoints = output['keypoints'][high_scores_idxs][post_nms_idxs]
+    #bboxes = output['boxes'][high_scores_idxs][post_nms_idxs]
 
     return bboxes,keypoints
 

@@ -92,6 +92,10 @@ def _get_iou_types(model):
 
 @torch.inference_mode()
 def evaluate(model, data_loader, device):
+    # added to updata the params.kpt_oks_sigmas array length depending on the number of keypoints in each object in the model
+    kp_oks_sigma_init = {"N_kps": data_loader.dataset.dataset.num_keypoints_per_object, "value": .5 / 10}
+    # kp_oks_sigma_len = data_loader.dataset.dataset.num_keypoints_per_object
+    # oks_sigma_val = .5 / 10
     n_threads = torch.get_num_threads()
     # FIXME remove this and make paste_masks_in_image run on the GPU
     torch.set_num_threads(1)
@@ -104,7 +108,7 @@ def evaluate(model, data_loader, device):
     coco = get_coco_api_from_dataset(data_loader.dataset)
     print(f'Time of function get_coco_api_from_dataset: {time.time()-timer_for_fun} ({(time.time()-timer_for_fun)/60:.2f} min)')
     iou_types = _get_iou_types(model)
-    coco_evaluator = CocoEvaluator(coco, iou_types)
+    coco_evaluator = CocoEvaluator(coco, iou_types, kp_oks_sigma_init)
 
     for images, targets in metric_logger.log_every(data_loader, 100, header):
         images = list(img.to(device) for img in images)

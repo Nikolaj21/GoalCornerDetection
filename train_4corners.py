@@ -261,7 +261,7 @@ def main(args):
         if epoch % args.predims_every == 0 or epoch == (args.epochs-1):
             # FIXME Consider which photos to show each time, if it should be the first case in the data_loader or what
             images,targets = next(iter(validation_loader))
-            pred_images = get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4)
+            pred_images = get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4, num_objects=4)
 
             pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
             pred_images_dict['epoch'] = epoch
