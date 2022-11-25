@@ -1,6 +1,6 @@
 import os
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
+# os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
 from Core.helpers import split_data_train_test, train_transform, eval_PCK, make_PCK_plot_objects, prediction_outliers

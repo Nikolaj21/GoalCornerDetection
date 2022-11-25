@@ -55,7 +55,7 @@ class GoalCalibrationDatasetOLD(Dataset):
         # shape of most imgs is (3120, 4208, 3), but some examples are different, e.g. (1920, 2560, 3)
         img_original = cv2.imread(img_path)
         # cv2 loads image in b,g,r. Return it to r,g,b
-        img_original = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img_original = cv2.cvtColor(img_original, cv2.COLOR_BGR2RGB)
 
         # load keypoint annotations (and other relevant metrics)
         calibration_json = json.load(open(calibration_path,'r',encoding='latin'))
@@ -115,7 +115,7 @@ class GoalCalibrationDatasetOLD(Dataset):
             'image_id': torch.tensor([idx]), # save id of image for reference
             'keypoints': keypoints_tensor[None,:],
             'calibration_quality': torch.tensor(calibration_quality),
-            'area': (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0]),
+            'area': (bboxes_tensor[:, 3] - bboxes_tensor[:, 1]) * (bboxes_tensor[:, 2] - bboxes_tensor[:, 0]),
             'iscrowd': torch.zeros(len(bboxes), dtype=torch.int64)
         }
         if self.transforms:

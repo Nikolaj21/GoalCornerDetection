@@ -6,8 +6,9 @@ import albumentations as A # Library for augmentations
 from tqdm import tqdm
 import time
 import datetime
-from collections import deque
+# from collections import deque
 import wandb
+from collections import defaultdict
 
 # helper / utility functions
 
@@ -117,7 +118,6 @@ def test_num_workers(data, batch_size, data_amount=1, pin_memory = False):
         end = time.time()
         print("Finish with:{} second, num_workers={}".format(end - start, num_workers))
 
-from collections import defaultdict
 def find_pixelerror(model, data_loader, device, num_objects):
     """
     Find distance (error) between ground truth and predictions in pixels, for all corners together and individually
@@ -125,16 +125,17 @@ def find_pixelerror(model, data_loader, device, num_objects):
         model: a neural network made using pytorch
         data_loader: a pytorch dataloader object
         device: device on which to run data through model. Either torch.device('cuda') or torch.device('cpu')
-        num_objects: the number of objects in every gt image
+        num_objects: the number of objects in every gt image. (only supports 1 or 4)
     Returns:
         pixelerrors: a dict of all the pixel errors for every point in different categories.
     """
-    TL_label,TR_label,BL_label,BR_label = 1,2,3,4
+    #FIXME this function only works for 4box case, either change so it works for both 4box and 1box or make seperate funtion for 1box
+    assert num_objects==1 or num_objects==4,f"num_objects should either be 1 or 4, but {num_objects} was given!"
     model.eval()
     model.to(device)
     cpu_device = torch.device("cpu")
     # save pixelerrors as a deque list, which is faster at appending than a normal list
-    pixelerrors_all, pixelerrors_TL, pixelerrors_TR, pixelerrors_BL, pixelerrors_BR = deque(), deque(), deque(), deque(), deque()
+    pixelerrors_all = []
     print(f'Finding pixelerror for all predictions...')
     start_time = time.time()
     # Run through all images and get the pixel distance (error) between predictions and ground-truth
@@ -166,24 +167,18 @@ def find_pixelerror(model, data_loader, device, num_objects):
                     # find the distance between every gt and gt for this label, and add to list of distances, along witht the image_id
                     for gt,dt in zip(obj_gt,obj_dt):
                         pixelerrors_all.append((target['image_id'], label, np.linalg.norm(dt[:2]-gt[:2])))
-
-    pixelerrors_TL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TL_label]
-    pixelerrors_TR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TR_label]
-    pixelerrors_BL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BL_label]
-    pixelerrors_BR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BR_label]
-    
-        # distances = [(target['image_id'].item(),np.linalg.norm(dt[:2]-gt[:2]))
-        #             for target, output in zip(targets, outputs)
-        #             for obj_gt,obj_dt in zip(target['keypoints'],output['keypoints'])
-        #             for gt, dt in zip(obj_gt,obj_dt)]
-
-        # # add pixelerrors for batch to list
-        # pixelerrors_all.extend(distances)
-        # # add the pixelerrors in each corner, using the fact that the corners show up in set intervals of 4 (for N_keypoints=4)
-        # pixelerrors_TL.extend(distances[0::num_keypoints])
-        # pixelerrors_TR.extend(distances[1::num_keypoints])
-        # pixelerrors_BL.extend(distances[2::num_keypoints])
-        # pixelerrors_BR.extend(distances[3::num_keypoints])
+    if num_objects == 1:
+        num_keypoints = 4
+        pixelerrors_TL = pixelerrors_all[0::num_keypoints]
+        pixelerrors_TR = pixelerrors_all[1::num_keypoints]
+        pixelerrors_BL = pixelerrors_all[2::num_keypoints]
+        pixelerrors_BR = pixelerrors_all[3::num_keypoints]
+    elif num_objects == 4:
+        TL_label,TR_label,BL_label,BR_label = 1,2,3,4
+        pixelerrors_TL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TL_label]
+        pixelerrors_TR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TR_label]
+        pixelerrors_BL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BL_label]
+        pixelerrors_BR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BR_label]
 
     pixelerrors = {
         "all":pixelerrors_all,
@@ -206,8 +201,6 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     # calculate pixel error between ground-truth and predictions for all corners, TL, TR, BL and BR (total of 5 lists (deques))
     pixelerrors = find_pixelerror(model,data_loader,device,num_objects=num_objects)
 
-    # total_keypoints = len(data_loader.dataset.indices)*N_keypoints
-    # for key in pixelerrors
     # count the number of correctly classified keypoints according to every threshold
     print(f'Running PCK evaluation on all thresholds...')
     start_time = time.time()
