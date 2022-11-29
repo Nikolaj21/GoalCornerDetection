@@ -20,7 +20,7 @@ def im_to_numpy(tensor):
         return tensor.permute(1,2,0).detach().cpu().numpy()
     else:
         print('could not convert to np array. Check type of input')
-        pass
+        return tensor
 
 def to_numpy(tensor):
     '''
@@ -30,7 +30,7 @@ def to_numpy(tensor):
         return tensor.detach().cpu().numpy()
     else:
         print('could not convert to np array. Check type of input')
-        pass
+        return tensor
 
 def to_torch(nparray):
     '''
@@ -96,7 +96,7 @@ def train_transform():
         # A.Blur(blur_limit=10, p=0.5),
         A.Rotate(limit=3,p=0.5)
         ],
-        keypoint_params=A.KeypointParams(format='xy',remove_invisible=True), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
+        keypoint_params=A.KeypointParams(format='xy'), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
         bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bboxes_labels']) # Bboxes should have labels, read more at https://albumentations.ai/docs/getting_started/bounding_boxes_augmentation/
     )
 
@@ -164,9 +164,9 @@ def find_pixelerror(model, data_loader, device, num_objects):
                 if not obj_dt == None:
                     # take the set of keypoints with the highest score
                     obj_dt = sorted(obj_dt, key=lambda tup_kp_and_score: tup_kp_and_score[1], reverse=True)[0][0]
-                    # find the distance between every gt and gt for this label, and add to list of distances, along witht the image_id
+                    # find the distance between every gt and gt for this label, and add to list of distances, along with the image_id
                     for gt,dt in zip(obj_gt,obj_dt):
-                        pixelerrors_all.append((target['image_id'], label, np.linalg.norm(dt[:2]-gt[:2])))
+                        pixelerrors_all.append((target['image_id'].item(), label, np.linalg.norm(dt[:2]-gt[:2])))
     if num_objects == 1:
         num_keypoints = 4
         pixelerrors_TL = pixelerrors_all[0::num_keypoints]
@@ -216,32 +216,3 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f'Total time: {total_time_str} ({total_time/len(thresholds):.4f} s / threshold)')
     return PCK,pixelerrors
-
-def make_PCK_plot_objects(PCK,thresholds):
-    PCK_plot_objects = {}
-    for pck_type,pck_values in PCK.items():
-        data = [[x,y] for x,y in zip(thresholds,pck_values.values())]
-        table = wandb.Table(data=data, columns = ["Threshold", "PCK"])
-        # wandb.log({f"PCK_{pck_type}" : wandb.plot.line(table, "Threshold", "PCK", title=f"PCK_{pck_type} Curve")})
-        PCK_plot_objects[f"PCK_{pck_type} Curve"] = wandb.plot.line(table, "Threshold", "PCK", title=f"PCK_{pck_type} Curve")
-    return PCK_plot_objects
-
-def prediction_outliers(errors_dict):
-    data = []
-    for cat,metrics in errors_dict.items():
-        _,_,errors = zip(*metrics)
-        Ndata = len(errors)
-        minval = np.min(errors)
-        maxval = np.max(errors)
-        std = np.std(errors)
-        mean = np.mean(errors)
-        median = np.median(errors)
-        inlier_min = mean-3*std
-        inlier_max = mean+3*std
-        outliers_tuplist = [(image_id,error) for image_id,_,error in metrics if not inlier_min <= error <= inlier_max]
-        outlier_ids,outliers = zip(*outliers_tuplist)
-        num_outliers = len(outliers)
-        pct_outliers = num_outliers / Ndata
-        data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids))
-    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers', 'outlier_im_ids'])
-    return table

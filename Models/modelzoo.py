@@ -1,5 +1,5 @@
-import sys
-sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
+# import sys
+# sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
 import torch
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
 from torchvision.models.detection.rpn import AnchorGenerator

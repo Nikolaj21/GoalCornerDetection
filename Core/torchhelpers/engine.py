@@ -10,7 +10,7 @@ from Core.torchhelpers.coco_utils import get_coco_api_from_dataset
 from collections import deque
 import wandb
 
-def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
+def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None, log_wandb=True):
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
@@ -60,16 +60,16 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
 
         if lr_scheduler is not None:
             lr_scheduler.step()
-            
-        # log metrics to wandb dashboard
-        metrics_train = {"train/loss": losses_reduced,
-                        "train/loss_classifier":loss_dict_reduced['loss_classifier'],
-                        "train/loss_box_reg":loss_dict_reduced['loss_box_reg'],
-                        "train/loss_keypoint":loss_dict_reduced['loss_keypoint'],
-                        "train/loss_objectness":loss_dict_reduced['loss_objectness'],
-                        "train/loss_rpn_box_reg":loss_dict_reduced['loss_rpn_box_reg'],
-                        "train/step": steps_per_epoch*epoch+batchnr}
-        wandb.log(metrics_train)
+        if log_wandb:
+            # log metrics to wandb dashboard
+            metrics_train = {"train/loss": losses_reduced,
+                            "train/loss_classifier":loss_dict_reduced['loss_classifier'],
+                            "train/loss_box_reg":loss_dict_reduced['loss_box_reg'],
+                            "train/loss_keypoint":loss_dict_reduced['loss_keypoint'],
+                            "train/loss_objectness":loss_dict_reduced['loss_objectness'],
+                            "train/loss_rpn_box_reg":loss_dict_reduced['loss_rpn_box_reg'],
+                            "train/step": steps_per_epoch*epoch+batchnr}
+            wandb.log(metrics_train)
         batchnr += 1
         
         metric_logger.update(loss=losses_reduced, **loss_dict_reduced)

@@ -3,7 +3,8 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
-from Core.helpers import split_data_train_test, train_transform, eval_PCK, make_PCK_plot_objects, prediction_outliers
+from Core.helpers import split_data_train_test, train_transform, eval_PCK
+from Core.wandbtools import make_PCK_plot_objects, prediction_outliers
 from Core.plottools import plot_loss, get_prediction_images
 # from Core.DataLoader import GoalCalibrationDataset, GoalCalibrationDataset4boxes
 from utils import DATA_DIR, export_wandb_api
@@ -83,7 +84,8 @@ def get_args_parser(add_help=True):
     parser.add_argument("--print-freq", default=100, type=int, help="print frequency")
     parser.add_argument("--output-dir", default="/zhome/60/1/118435/Master_Thesis/Runs/", type=str, help="path to save outputs")
     parser.add_argument("--model-name", default="tester_model", type=str, help="Unique folder name for saving model results")
-    parser.add_argument("--test-only", dest="test_only", action="store_true", help="If option is set, the script willonly test the model")
+    parser.add_argument("--test-only", dest="test_only", action="store_true", help="If option is set, the script will only test the model")
+    parser.add_argument("--load-path", type=str, help="path to load model checkpoint from. Must be present if --test-only is used")
     parser.add_argument("--data-aug", dest="data_aug", action="store_true", help="Augment data during training")
     parser.add_argument("--pckthreshup", default=200, type=int, help="Upper threshold on the pixel error when when calculating PCK")
     parser.add_argument("--predims_every", default=1, type=int, help="Interval (in epochs) in which to save intermittent prediction images from the validation set")
@@ -97,7 +99,29 @@ def get_args_parser(add_help=True):
 
     return parser
 
+class Params:
+    def setparams(
+        self,
+        im_score_thresh,
+        nms_iou_thresh,
+        plot_kp_opaqueness,
+        bbox_expand_x,
+        bbox_expand_y):
+
+        self.im_score_thresh = im_score_thresh
+        self.nms_iou_thresh = nms_iou_thresh
+        self.plot_kp_opaqueness = plot_kp_opaqueness
+        self.bbox_expand_x = bbox_expand_x
+        self.bbox_expand_y = bbox_expand_y
+
+    def setself(self, params):
+        for name,val in params.items():
+            self.__dict__[name] = val
+    def __init__(self):
+        self.setparams()
+
 def main(args):
+    # params = Params(im_score_thresh=0.7,nms_iou_thresh=0.3,plot_kp_opaqueness=0.4)
     # convert these arguments from strings to boolean
     args.shuffle_dataset = True if args.shuffle_dataset=='True' else False
     args.shuffle_epoch = True if args.shuffle_epoch=='True' else False
@@ -131,7 +155,8 @@ def main(args):
             "shuffle_dataset_seed": args.shuffle_dataset_seed,
             "shuffle_epoch": args.shuffle_epoch,
             "shuffle_epoch_seed": args.shuffle_epoch_seed,
-            "filter_data": args.filter_data
+            "filter_data": args.filter_data,
+            "data_augmentation": args.data_aug
             }
         )
     # Define custom x-axis metric
@@ -146,6 +171,7 @@ def main(args):
     wandb.define_metric("epoch_metrics/loss_avg", step_metric="epoch", summary="min")
     wandb.define_metric("epoch_metrics/loss_total", step_metric="epoch", summary="min")
     
+
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print(f'Running on {device}')
     ### Set save path ###
@@ -192,7 +218,20 @@ def main(args):
                                                             pin_memory=False) # pin_memory was false before running last training
     # Setting hyper-parameters
     #FIXME better aspect ratios for the anchor boxes needs to be decided. I would drop anything below 1 and above 3
-    anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
+    # anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
+    # the different sizes to use for the anchor boxes
+    anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
+    # list of possible aspect_ratios to use, due to different models being trained on different number of aspect_ratios
+    aspect_ratios_all = (1.0, 4208/3120, 2.0, 2.5, 3.0, 0.5, 4.0)
+    if args.test_only:
+        # torch.backends.cudnn.deterministic = True
+        state_dict = torch.load(args.load_path)
+        number_aspect_ratios = len(state_dict.get('rpn.head.cls_logits.bias'))
+        aspect_ratios_anchors = (aspect_ratios_all[:number_aspect_ratios], ) * len(anchor_sizes)
+    else:
+        # which aspect ratios to use for every anchor size. Assumes aspect_ratio = height / width
+        aspect_ratios_anchors = (aspect_ratios_all[:3], ) * len(anchor_sizes)
+    anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
     model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator)
     model.to(device)
     print(f'Model moved to device: {device}')
@@ -231,7 +270,20 @@ def main(args):
     #FIXME remember to set it up so you load the model if you only want to evaluate a pretrained model
     if args.test_only:
         # torch.backends.cudnn.deterministic = True
-        evaluate(model, validation_loader, device=device)
+        
+        model.load_state_dict(state_dict)
+        # evaluate(model, validation_loader, device=device)
+        # Evaluate PCK for all the keypoints
+        thresholds=np.arange(1,args.pckthreshup+1)
+        PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds, num_objects=num_objects)
+        # Log the PCK values in wandb
+        PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
+        wandb.log(PCK_plot_objects)
+        
+        # Find the outliers in predictions and log them
+        outliertable = prediction_outliers(pixelerrors, model, validation_loader, num_objects, device)
+        wandb.log({"outliers_table": outliertable})
+        print(f'Model has been tested!')
         return
     
 
@@ -277,7 +329,7 @@ def main(args):
         if epoch % args.predims_every == 0 or epoch == (args.epochs-1):
             # FIXME Consider which photos to show each time, if it should be the first case in the data_loader or what
             images,targets = next(iter(validation_loader))
-            pred_images = get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4, num_objects=num_objects)
+            pred_images = get_prediction_images(model,images,targets,device, num_objects=num_objects,opaqueness=0.5)
 
             pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
             pred_images_dict['epoch'] = epoch
@@ -301,7 +353,7 @@ def main(args):
     wandb.log(PCK_plot_objects)
     
     # Find the outliers in predictions and log them
-    outliertable = prediction_outliers(pixelerrors)
+    outliertable = prediction_outliers(pixelerrors, model, validation_loader, num_objects, device)
     wandb.log({"outliers_table": outliertable})
 
 def test(args):

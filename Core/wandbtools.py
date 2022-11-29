@@ -8,7 +8,8 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 from Core.DataLoader import GoalCalibrationDataset,GoalCalibrationDatasetOLD
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
 from torchvision.models.detection.rpn import AnchorGenerator
-from Core.helpers import eval_PCK,split_data_train_test
+from Core.helpers import split_data_train_test
+from Core.plottools import get_prediction_images
 import wandb
 from utils import DATA_DIR, export_wandb_api
 import matplotlib.pyplot as plt
@@ -16,33 +17,48 @@ import numpy as np
 import time
 import datetime
 
+def make_PCK_plot_objects(PCK,thresholds):
+    PCK_plot_objects = {}
+    for pck_type,pck_values in PCK.items():
+        data = [[x,y] for x,y in zip(thresholds,pck_values.values())]
+        table = wandb.Table(data=data, columns = ["Threshold", "PCK"])
+        # wandb.log({f"PCK_{pck_type}" : wandb.plot.line(table, "Threshold", "PCK", title=f"PCK_{pck_type} Curve")})
+        PCK_plot_objects[f"PCK_{pck_type} Curve"] = wandb.plot.line(table, "Threshold", "PCK", title=f"PCK_{pck_type} Curve")
+    return PCK_plot_objects
 
-def load_model(load_path):
-    anchor_generator = AnchorGenerator(sizes=(128, 256, 512, 1024, 2048), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
-    
-    model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=2, num_keypoints=4,rpn_anchor_generator=anchor_generator)
-    model.load_state_dict(torch.load(load_path))
-    model.to(device)
-    model.eval()
-    print(f'Model loaded!')
-    return model
+def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
+    '''
+    Finds some summary statistics in regards to the errors of the predictions. Also save the prediction that are classified as outliers and their predicted images for logging
+    args:
+        data_loader: assumes a pytorch dataloader that is defined with a torch.util.data.Subset 
+    '''
+    data = []
+    for cat,metrics in errors_dict.items():
+        # extracts the errors list and discards the image ids and labels
+        _,_,errors = zip(*metrics)
+        Ndata = len(errors)
+        minval = np.min(errors)
+        maxval = np.max(errors)
+        std = np.std(errors)
+        mean = np.mean(errors)
+        median = np.median(errors)
+        # make sure the inliner_min doesn't go below 0
+        inlier_min = np.maximum(mean-3*std,0)
+        inlier_max = mean+3*std
+        outliers_tuplist = [(image_id,label,error) for image_id,label,error in metrics if not inlier_min <= error <= inlier_max]
+        outlier_ids, outlier_labels, outliers = zip(*outliers_tuplist)
+        # filter duplicate outlier_ids, but keep all outlier_labels and outliers (error values) that way we don't get duplicate outlier_predims
+        outlier_ids = tuple(set(outlier_ids))
+        num_outliers = len(outliers)
+        pct_outliers = num_outliers / Ndata
+        data_plot = [data_loader.dataset.dataset.__getitem__(i) for i in outlier_ids]
+        outlierimages,outliertargets = zip(*data_plot)
+        outlier_predims = get_prediction_images(model=model,images=outlierimages,targets=outliertargets,device=device,num_objects=num_objects)
+        outlier_predims_list = [wandb.Image(image_array, caption=f"Prediction Outlier, Image ID: {image_id}") for image_id,image_array in outlier_predims.items()]
 
-def load_data(data_path):
-    # initialize an instance of the dataloader
-    GoalData = GoalCalibrationDatasetAUG(data_path,transforms=None,istrain=False)
-    GoalData_val = GoalCalibrationDatasetAUG(data_path,transforms=None,istrain=False)
-    # put dataloader into pytorch dataloader
-    train_loader,validation_loader = split_data_train_test(GoalData,GoalData_val,validation_split=0.25,batch_size=4,shuffle_dataset=True,shuffle_seed=None,data_amount=1)
-
-    print('Data loaded!')
-    return train_loader,validation_loader
-
-def run_PCK(model,data_loader,thresholds): 
-    print('\nRunning PCK eval...')
-    PCK,_ = eval_PCK(model,data_loader,device,thresholds=thresholds)
-    # for pcktype,pck in PCK.items():
-    #     print(f'Percentage of Correct Keypoints (PCK) {pcktype}\n{pck}')
-    return PCK
+        data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids, outlier_predims_list, outlier_labels))
+    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers', 'outlier_im_ids', 'outlier_ims', 'outlier_labels'])
+    return table
 
 def wandbapi_load_run(run_path):
     api = wandb.Api()
@@ -72,15 +88,6 @@ def make_PCK_plots(PCK,thresholds):
         fig.savefig(f'PCK_{pck_type}.png')
     return
 
-def make_PCK_plot_objects(PCK,thresholds):
-    PCK_plot_objects = {}
-    for pck_type,pck_values in PCK.items():
-        data = [[x,y] for x,y in zip(thresholds,pck_values.values())]
-        table = wandb.Table(data=data, columns = ["Threshold", "PCK"])
-        # wandb.log({f"PCK_{pck_type}" : wandb.plot.line(table, "Threshold", "PCK", title=f"PCK_{pck_type} Curve")})
-        PCK_plot_objects[f"PCK_{pck_type} Curve"] = wandb.plot.line(table, "Threshold", "PCK", title=f"PCK_{pck_type} Curve")
-    return PCK_plot_objects
-
 def main():
     # remember to update with correct run path, which can be found under overview section of a run
     run_path = "nikolaj21/GoalCornerDetection/1k9srkii" # path for tester_sgd_da_50epochs
@@ -89,15 +96,35 @@ def main():
     # remember to update with correct model weights.pth
     load_path = r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection/Models/tester_sgd_da_50epochs/weights.pth'
     model = load_model(load_path)
-    # set thresholds for PCK evaluation
-    thresholds=np.arange(1,101)
-    PCK = run_PCK(model,validation_loader,thresholds)
-    # make_PCK_plots(PCK,thresholds)
+    # # set thresholds for PCK evaluation
+    # thresholds=np.arange(1,101)
+    # PCK = run_PCK(model,validation_loader,thresholds)
+    # # make_PCK_plots(PCK,thresholds)
 
-    wandb_objects = make_PCK_plot_objects(PCK,thresholds)
+    # wandb_objects = make_PCK_plot_objects(PCK,thresholds)
 
-    log_wandb_summary(wandb_objects,run)
+    # log_wandb_summary(wandb_objects,run)
 
+
+def load_model(load_path):
+    anchor_generator = AnchorGenerator(sizes=(128, 256, 512, 1024, 2048), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
+    
+    model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=2, num_keypoints=4,rpn_anchor_generator=anchor_generator)
+    model.load_state_dict(torch.load(load_path))
+    model.to(device)
+    model.eval()
+    print(f'Model loaded!')
+    return model
+
+def load_data(data_path):
+    # initialize an instance of the dataloader
+    GoalData = GoalCalibrationDataset(data_path,transforms=None,istrain=False)
+    GoalData_val = GoalCalibrationDataset(data_path,transforms=None,istrain=False)
+    # put dataloader into pytorch dataloader
+    train_loader,validation_loader = split_data_train_test(GoalData,GoalData_val,validation_split=0.25,batch_size=4,shuffle_dataset=True,shuffle_seed=None,data_amount=1)
+
+    print('Data loaded!')
+    return train_loader,validation_loader
 
 def make_UA_PCK_curve():
     # export wandb api key to environment variable
@@ -205,6 +232,7 @@ def make_UA_PCK_curve():
     PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
     wandb.log(PCK_plot_objects)
 
+
 if __name__ == '__main__':
-    # main()
-    make_UA_PCK_curve()
+    main()
+    # make_UA_PCK_curve()

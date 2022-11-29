@@ -88,7 +88,7 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
         ax[1].imshow(image)
         ax[1].set_title(f'{title_new}, Prediction confidence: {pred_score:.4f}', fontsize=fontsize)
 
-def visualize_results(model, images, targets, device, plotdim, score_thresh=0.7, iou_thresh=0.3, opaqueness=0.4, num_objects=1):
+def visualize_results(model, images, targets, device, plotdim,  num_objects, score_thresh=0.7, iou_thresh=0.3, opaqueness=0.5):
     '''
     Plots the results, i.e. bounding boxes and keypoints for a given model and list of images. Also plots the ground-truth keypoints.
     Args:
@@ -98,7 +98,7 @@ def visualize_results(model, images, targets, device, plotdim, score_thresh=0.7,
         iou_thresh: A threshold for performing NMS on the resulting predictions after doing the score thresholding.
     '''
 
-    pred_images,scores_images = get_prediction_images(model,images,targets,device,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness,num_objects=num_objects, return_scores=True)
+    pred_images,scores_images = get_prediction_images(model,images,targets,device,num_objects=num_objects,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness, return_scores=True)
 
     print(f'Scores for images\n')
     for id,scores in zip(pred_images.keys(),scores_images):
@@ -111,7 +111,7 @@ def visualize_results(model, images, targets, device, plotdim, score_thresh=0.7,
 
     return
 
-def get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thresh=0.3,opaqueness=0.4, num_objects=1, return_scores=False):
+def get_prediction_images(model, images, targets, device, num_objects, opaqueness=0.5, return_scores=False, score_thresh=0.7,iou_thresh=0.3):
     """
     Takes model, data and list of image_ids and returns
     list of prediction images for the model of type
@@ -126,10 +126,11 @@ def get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thres
     pred_images = {}
     for image,target,output in zip(images,targets,outputs):
         id = target['image_id']
-        keypoints_gt = [[list(map(int, kp[:2])) for kp in kps] for kps in to_numpy(target['keypoints'])]
+        keypoints_gt = kps_to_cv2(target['keypoints'])
+        keypoints_ua = kps_to_cv2(target['keypoints_ua'])
         #bboxes,keypoints = NMS(output,score_thresh=score_thresh,iou_thresh=iou_thresh, num_objects=num_objects)
         bboxes,keypoints = filter_preds(output,num_objects=num_objects)
-        pred_image = make_pred_image(image, bboxes, keypoints, keypoints_gt, opaqueness=opaqueness)
+        pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt, keypointsUA=keypoints_ua, opaqueness=opaqueness)
         pred_images[id] = pred_image
 
     if return_scores:
@@ -138,37 +139,52 @@ def get_prediction_images(model,images,targets,device,score_thresh=0.7,iou_thres
     else:
         return pred_images
     
-def make_pred_image(image, bboxes, keypoints, keypointsGT, opaqueness=0.4, show_gt=True, show_pred=True):
+def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypointsUA=None, opaqueness=0.5):
     """
     Adds bboxes and keypoints to a single image
     alpha is the opaqueness of the keypoints, lower value means more see-through (must be between 0 and 1)
     returns np.array for the image
     """
-    keypoints_classes_ids2names = {0: 'TL', 1: 'TR', 2: 'BL', 3: 'BR'}
+    # keypoints_classes_ids2names = {1: 'TL', 2: 'TR', 3: 'BL', 4: 'BR'}
     # convert data to correct type for using with cv2
     image,bboxes,keypoints = data_to_cv2(image,bboxes,keypoints)
-    # put all bounding boxes in the image
-    for bbox in bboxes:
-        start_point = (bbox[0], bbox[1])
-        end_point = (bbox[2], bbox[3])
-        image = cv2.rectangle(image.copy(), start_point, end_point, (0,255,0), 2)
-    # put all ground-truth keypoints in the image
-    if show_gt:
-        for kps in keypointsGT:
-            for idx, kp in enumerate(kps):
+    if bboxes:
+        # put all bounding boxes in the image
+        for bbox in bboxes:
+            start_point = (bbox[0], bbox[1])
+            end_point = (bbox[2], bbox[3])
+            image = cv2.rectangle(image.copy(), start_point, end_point, (0,255,0), 2)
+    if keypointsGT:
+        # put all ground-truth keypoints in the image
+        for kpsGT in keypointsGT:
+            for kp_gt in kpsGT:
                 overlay = image.copy()
-                cv2.circle(overlay, tuple(kp), 5, (0,0,255), 10)
+                overlay = cv2.circle(img=overlay, center=tuple(kp_gt), radius=10, color=(0,0,255), thickness=cv2.FILLED)#, thickness=10)
                 image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
-    # put all predicted keypoints in the image
-    if show_pred:
-        for kps in keypoints:
-            for idx, kp in enumerate(kps):
+                # image = cv2.circle(img=image.copy(),center=tuple(kp_gt), radius=10, color=(0,0,255), thickness=1)#cv2.FILLED)
+
+    if keypointsUA:
+        # put all user annotated (ua) keypoints in the image
+        for kpsUA in keypointsUA:
+            for kp_ua in kpsUA:
                 overlay = image.copy()
-                cv2.circle(overlay, tuple(kp), 5, (255,0,0), 10)
+                overlay = cv2.circle(img=overlay, center=tuple(kp_ua), radius=10, color=(255,140,0), thickness=cv2.FILLED)#, thickness=5)
+                image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
+                # add circle around GT which has radius set to radial distance between gt and ua
+                # radius = int(np.linalg.norm(np.subtract(kp_ua[:2],kp_gt[:2])))
+                # image = cv2.circle(img=image.copy(), center=tuple(kp_gt), radius=radius, color=(255,140,0), thickness=1)
+    if keypoints:
+        # put all predicted keypoints in the image
+        for kps in keypoints:
+            for kp in kps:
+                overlay = image.copy()
+                overlay = cv2.circle(img=overlay, center=tuple(kp), radius=10, color=(255,0,0), thickness=cv2.FILLED)#thickness=5)
                 image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
                 # FIXME temporarily removed while testing 4corner method
                 # image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
     return image
+
+
 
 def NMS(output,score_thresh=0.7,iou_thresh=0.3, num_objects=1):
     """
@@ -194,9 +210,10 @@ def NMS(output,score_thresh=0.7,iou_thresh=0.3, num_objects=1):
 
     return bboxes,keypoints
 
-def filter_preds(output, num_objects=1):
+def filter_preds(output, num_objects):
     """
-    Filter predictions from a single single output, so only the object with the highest confidence in each class remains
+    Filter predictions from a single output, so only the object with the highest confidence in each class remains.
+    num_objects: the number of object classes that there should be in every image.
     output: dict containing the prediction results for image.
         keys (minimum): keypoints, scores, boxes
     returns the updated bboxes and keypoints that passed the filtering
@@ -207,7 +224,8 @@ def filter_preds(output, num_objects=1):
     for label,kps,box,score in zip(output['labels'],output['keypoints'],output['boxes'],output['scores']):
         label_to_dts[label.item()].append((box,kps,score.item()))
     # compare the gt and dt of every object with the same label, taking only the highest scored one
-    for label in range(1,num_objects+1):
+    labels = range(1,num_objects+1)
+    for label in labels:
         # get the obj_dt for this label (obj_dt may not exist)
         obj_dt = label_to_dts.get(label)
         # if there are any predictions with this label
@@ -217,17 +235,17 @@ def filter_preds(output, num_objects=1):
             bboxes.append(obj_dt[0])
             keypoints.append(obj_dt[1])
 
-
-    #keypoints = output['keypoints'][high_scores_idxs][post_nms_idxs]
-    #bboxes = output['boxes'][high_scores_idxs][post_nms_idxs]
-
     return bboxes,keypoints
 
 def data_to_cv2(image,bboxes,keypoints):
     image = (im_to_numpy(image) * 255).astype(np.uint8)
     bboxes = [list(map(int, bbox.tolist())) for bbox in bboxes]
-    keypoints = [[list(map(int, kp[:2])) for kp in kps] for kps in keypoints]
+    keypoints = kps_to_cv2(keypoints)#[[list(map(int, kp[:2])) for kp in kps] for kps in keypoints]
     return image,bboxes,keypoints
+
+def kps_to_cv2(keypoints):
+    keypoints = [[list(map(int, kp[:2])) for kp in kps] for kps in keypoints]
+    return keypoints
 
 def make_GT_image(image, bboxes, keypointsGT, opaqueness=0.4):
     """
@@ -251,6 +269,7 @@ def make_GT_image(image, bboxes, keypointsGT, opaqueness=0.4):
             image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
             # image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
     return image
+
 
 def plot_loss(loss_dict, save_folder, epochs):
         '''
