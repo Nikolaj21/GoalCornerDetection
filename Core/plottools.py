@@ -105,10 +105,14 @@ def visualize_results(model, images, targets, device, plotdim,  num_objects, sco
         print(f"scores image {id}: {scores}")
 
     _,axes = plt.subplots(plotdim[0],plotdim[1], figsize=(40,40), layout="constrained")
-    for i,(im_id,pred_image) in enumerate(pred_images.items()):
-        axes.ravel()[i].imshow(pred_image)
-        axes.ravel()[i].set_title(f'Image ID: {im_id}')
-
+    if plotdim == (1,1) or plotdim == 1:
+        for i,(im_id,pred_image) in enumerate(pred_images.items()):
+            axes.imshow(pred_image)
+            axes.set_title(f'Image ID: {im_id}')
+    else:
+        for i,(im_id,pred_image) in enumerate(pred_images.items()):
+            axes.ravel()[i].imshow(pred_image)
+            axes.ravel()[i].set_title(f'Image ID: {im_id}')
     return
 
 def get_prediction_images(model, images, targets, device, num_objects, opaqueness=0.5, return_scores=False, score_thresh=0.7,iou_thresh=0.3):
@@ -126,11 +130,12 @@ def get_prediction_images(model, images, targets, device, num_objects, opaquenes
     pred_images = {}
     for image,target,output in zip(images,targets,outputs):
         id = target['image_id']
+        # scores = to_numpy(output['scores'])
         keypoints_gt = kps_to_cv2(target['keypoints'])
         keypoints_ua = kps_to_cv2(target['keypoints_ua'])
         #bboxes,keypoints = NMS(output,score_thresh=score_thresh,iou_thresh=iou_thresh, num_objects=num_objects)
-        bboxes,keypoints = filter_preds(output,num_objects=num_objects)
-        pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt, keypointsUA=keypoints_ua, opaqueness=opaqueness)
+        bboxes,keypoints,labels,scores = filter_preds(output,num_objects=num_objects)
+        pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt, keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores, labels=labels, return_scores=return_scores)
         pred_images[id] = pred_image
 
     if return_scores:
@@ -139,21 +144,24 @@ def get_prediction_images(model, images, targets, device, num_objects, opaquenes
     else:
         return pred_images
     
-def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypointsUA=None, opaqueness=0.5):
+def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypointsUA=None, opaqueness=0.5, scores=None, labels=None, return_scores=False):
     """
     Adds bboxes and keypoints to a single image
     alpha is the opaqueness of the keypoints, lower value means more see-through (must be between 0 and 1)
     returns np.array for the image
     """
     # keypoints_classes_ids2names = {1: 'TL', 2: 'TR', 3: 'BL', 4: 'BR'}
+    label_to_color =  {1: (255,0,0), 2: (0,255,0), 3: (0,150,255), 4: (255,255,0)}
     # convert data to correct type for using with cv2
     image,bboxes,keypoints = data_to_cv2(image,bboxes,keypoints)
     if bboxes:
         # put all bounding boxes in the image
-        for bbox in bboxes:
+        for i,bbox in enumerate(bboxes):
             start_point = (bbox[0], bbox[1])
             end_point = (bbox[2], bbox[3])
             image = cv2.rectangle(image.copy(), start_point, end_point, (0,255,0), 2)
+            # add prediction confidence for each box
+            image = cv2.putText(image.copy(), f"L:{labels[i]} C:{round(scores[i],3)}", start_point, cv2.FONT_HERSHEY_SIMPLEX, 1, label_to_color[labels[i]], 2, cv2.LINE_AA)
     if keypointsGT:
         # put all ground-truth keypoints in the image
         for kpsGT in keypointsGT:
@@ -218,14 +226,14 @@ def filter_preds(output, num_objects):
         keys (minimum): keypoints, scores, boxes
     returns the updated bboxes and keypoints that passed the filtering
     """
-    bboxes, keypoints = [],[]
+    bboxes, keypoints, labels, scores = [],[],[],[]
     label_to_dts = defaultdict(list)
     # make a dictionary for the dts in every output that save the label, keypoints and scores, for later sorting
     for label,kps,box,score in zip(output['labels'],output['keypoints'],output['boxes'],output['scores']):
         label_to_dts[label.item()].append((box,kps,score.item()))
     # compare the gt and dt of every object with the same label, taking only the highest scored one
-    labels = range(1,num_objects+1)
-    for label in labels:
+    all_labels = range(1,num_objects+1)
+    for label in all_labels:
         # get the obj_dt for this label (obj_dt may not exist)
         obj_dt = label_to_dts.get(label)
         # if there are any predictions with this label
@@ -234,8 +242,11 @@ def filter_preds(output, num_objects):
             obj_dt = sorted(obj_dt, key=lambda tup_box_kp_and_score: tup_box_kp_and_score[2], reverse=True)[0]
             bboxes.append(obj_dt[0])
             keypoints.append(obj_dt[1])
+            labels.append(label)
+            scores.append(obj_dt[2])
 
-    return bboxes,keypoints
+
+    return bboxes,keypoints,labels,scores
 
 def data_to_cv2(image,bboxes,keypoints):
     image = (im_to_numpy(image) * 255).astype(np.uint8)

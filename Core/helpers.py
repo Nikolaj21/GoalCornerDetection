@@ -114,7 +114,6 @@ def find_pixelerror(model, data_loader, device, num_objects):
     Returns:
         pixelerrors: a dict of all the pixel errors for every point in different categories.
     """
-    #FIXME this function only works for 4box case, either change so it works for both 4box and 1box or make seperate funtion for 1box
     assert num_objects==1 or num_objects==4,f"num_objects should either be 1 or 4, but {num_objects} was given!"
     model.eval()
     model.to(device)
@@ -124,7 +123,7 @@ def find_pixelerror(model, data_loader, device, num_objects):
     print(f'Finding pixelerror for all predictions...')
     start_time = time.time()
     # Run through all images and get the pixel distance (error) between predictions and ground-truth
-    for images, targets in data_loader:
+    for images, targets in tqdm(data_loader):
         images = list(image.to(device) for image in images)
         # outputs will be a list of dict of len == batch_size
         with torch.no_grad():
