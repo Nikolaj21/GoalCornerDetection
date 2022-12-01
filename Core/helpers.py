@@ -2,7 +2,6 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader,random_split, SubsetRandomSampler, Subset
 from Core.torchhelpers.utils import collate_fn
-import albumentations as A # Library for augmentations
 from tqdm import tqdm
 import time
 import datetime
@@ -85,20 +84,6 @@ def split_data_train_test(DatasetClass_train, DatasetClass_val, validation_split
     print(f'###################\nTotal size of dataset: {dataset_size}\nTrain data --> Size: {len(train_loader.dataset)}, batch size: {train_loader.batch_size}\nValidation data --> Size: {len(validation_loader.dataset)}, batch size: {validation_loader.batch_size}')
 
     return train_loader,validation_loader
-
-def train_transform():
-    '''
-    Makes data augmentation transformations
-    '''
-    return A.Compose(
-        [A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, brightness_by_max=True, p=0.5),
-        A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
-        # A.Blur(blur_limit=10, p=0.5),
-        A.Rotate(limit=3,p=0.5)
-        ],
-        keypoint_params=A.KeypointParams(format='xy'), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
-        bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bboxes_labels']) # Bboxes should have labels, read more at https://albumentations.ai/docs/getting_started/bounding_boxes_augmentation/
-    )
 
 def test_num_workers(data, batch_size, data_amount=1, pin_memory = False):
     """

@@ -3,7 +3,8 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 import torch
 import numpy as np
-from Core.helpers import split_data_train_test, train_transform, eval_PCK
+from Core.DataLoader import train_transform
+from Core.helpers import split_data_train_test, eval_PCK
 from Core.wandbtools import make_PCK_plot_objects, prediction_outliers
 from Core.plottools import plot_loss, get_prediction_images
 # from Core.DataLoader import GoalCalibrationDataset, GoalCalibrationDataset4boxes
@@ -267,7 +268,6 @@ def main(args):
         }
     }
     
-    #FIXME remember to set it up so you load the model if you only want to evaluate a pretrained model
     if args.test_only:
         # torch.backends.cudnn.deterministic = True
         

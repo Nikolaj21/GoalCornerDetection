@@ -5,9 +5,8 @@ from torch.utils.data import Dataset
 import json
 from torchvision.transforms import functional as F
 import torchvision.transforms as T
+import albumentations as A # Library for augmentations
 import numpy as np
-import os
-from PIL import Image
 import math
 from pathlib import Path
 
@@ -242,26 +241,46 @@ class GoalCalibrationDataset4boxes(Dataset):
         # make bounding boxes
         bboxes_original = make_gt_boxes(img_original, keypoints_original, expand_x=0.05, expand_y=0.05)
 
-        # Each object is a corner of the goal
-        bboxes_labels_original = ['TL','TR','BL','BR']
+        
         if self.istrain:
             if self.transforms:
-
+                # Each object is a corner of the goal
+                bboxes_labels_original = [1,2,3,4]
+                # concatenate gt and ua keypoints to do transformations
+                keypoints_original_combined = np.concatenate((keypoints_original,keypoints_ua_original))
                 # Apply augmentations
-                transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
+                transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original_combined)
                 img = transformed['image']
                 bboxes = transformed['bboxes']
-                keypoints = np.array(transformed['keypoints']).tolist()
+                keypoints_combined = np.array(transformed['keypoints']).tolist()
+                # # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
+                # for kpt in keypoints_combined:
+                #     if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
+                #         kpt.append(0)
+                #     else:
+                #         kpt.append(1)
+                keypoints = keypoints_combined[:4]
+                keypoints_ua = keypoints_combined[4:]
         
         else:
             img, bboxes, keypoints, keypoints_ua = img_original, bboxes_original, keypoints_original, keypoints_ua_original
-
+            # for kpt_gt,kpt_ua in zip(keypoints,keypoints_ua):
+            #     kpt_gt.append(1)
+            #     kpt_ua.append(1)
+            
+        imH,imW = img_original.shape[:2]
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
         for kpt in keypoints:
-            kpt.append(1)
+            if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
+                kpt.append(0)
+            else:
+                kpt.append(1)
         # change format for ua keypoints
         for kpt in keypoints_ua:
-            kpt.append(1)
+            if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
+                kpt.append(0)
+            else:
+                kpt.append(1)
 
         # convert image to tensor
         img_tensor = F.to_tensor(img)
@@ -331,6 +350,21 @@ def make_gt_boxes(img_original, keypoints_original, expand_x, expand_y):
 
     bboxes_original = np.concatenate((box_topleft_keepinIm,box_botright_keepinIm),axis=1)
     return bboxes_original
+
+def train_transform():
+    '''
+    Makes data augmentation transformations
+    '''
+    return A.Compose(
+        [A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, brightness_by_max=True, p=0.5),
+        A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
+        # A.Blur(blur_limit=10, p=0.5),
+        A.Rotate(limit=3,p=0.5)
+        ],
+        keypoint_params=A.KeypointParams(format='xy', remove_invisible=False), # More about keypoint formats used in albumentations library read at https://albumentations.ai/docs/getting_started/keypoints_augmentation/
+        bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bboxes_labels']) # Bboxes should have labels, read more at https://albumentations.ai/docs/getting_started/bounding_boxes_augmentation/
+    )
+
 
 ############################################################
 ############################################################
