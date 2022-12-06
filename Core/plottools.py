@@ -88,7 +88,7 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
         ax[1].imshow(image)
         ax[1].set_title(f'{title_new}, Prediction confidence: {pred_score:.4f}', fontsize=fontsize)
 
-def visualize_results(model, images, targets, device, plotdim,  num_objects, score_thresh=0.7, iou_thresh=0.3, opaqueness=0.5):
+def visualize_results(model, images, targets, device, num_objects, figsize=(40,30), show_axis=False, score_thresh=0.7, iou_thresh=0.3, opaqueness=0.5, return_scores=True):
     '''
     Plots the results, i.e. bounding boxes and keypoints for a given model and list of images. Also plots the ground-truth keypoints.
     Args:
@@ -98,22 +98,35 @@ def visualize_results(model, images, targets, device, plotdim,  num_objects, sco
         iou_thresh: A threshold for performing NMS on the resulting predictions after doing the score thresholding.
     '''
 
-    pred_images,scores_images = get_prediction_images(model,images,targets,device,num_objects=num_objects,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness, return_scores=True)
+    pred_images,scores_images = get_prediction_images(model,images,targets,device,num_objects=num_objects,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness, return_scores=return_scores)
+    if return_scores:
+        print(f'Scores for images\n')
+        for id,scores in zip(pred_images.keys(),scores_images):
+            print(f"scores image {id}: {scores}")
 
-    print(f'Scores for images\n')
-    for id,scores in zip(pred_images.keys(),scores_images):
-        print(f"scores image {id}: {scores}")
+    # n = len(images)
+    # # Makes the plot dimensions in such a way that the images fit into a grid, that is as square as possible
+    # plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n))) 
 
-    _,axes = plt.subplots(plotdim[0],plotdim[1], figsize=(40,40), layout="constrained")
-    if plotdim == (1,1) or plotdim == 1:
-        for i,(im_id,pred_image) in enumerate(pred_images.items()):
-            axes.imshow(pred_image)
-            axes.set_title(f'Image ID: {im_id}')
-    else:
-        for i,(im_id,pred_image) in enumerate(pred_images.items()):
-            axes.ravel()[i].imshow(pred_image)
-            axes.ravel()[i].set_title(f'Image ID: {im_id}')
+    # _,axes = plt.subplots(plotdim[0],plotdim[1], figsize=(40,40), layout="constrained")
+    # if plotdim == (1,1):
+    #     for im_id,pred_image in pred_images.items():
+    #         axes.imshow(pred_image)
+    #         axes.set_title(f'Image ID: {im_id}')
+    # else:
+    #     for i,(im_id,pred_image) in enumerate(pred_images.items()):
+    #         axes.ravel()[i].imshow(pred_image)
+    #         axes.ravel()[i].set_title(f'Image ID: {im_id}')
+    
+    im_ids, pred_ims = zip(*pred_images.items())
+    visualize_images(images=pred_ims,
+                    figtitle=f'Prediction Results',
+                    subplottitles=[f'Image ID: {im_id}' for im_id in im_ids],
+                    figsize=figsize,
+                    show_axis=show_axis)
+    
     return
+    
 
 def get_prediction_images(model, images, targets, device, num_objects, opaqueness=0.5, return_scores=False, score_thresh=0.7,iou_thresh=0.3):
     """
@@ -129,7 +142,7 @@ def get_prediction_images(model, images, targets, device, num_objects, opaquenes
         outputs = model(images)
     pred_images = {}
     for image,target,output in zip(images,targets,outputs):
-        id = target['image_id']
+        id = target['image_id'].item()
         # scores = to_numpy(output['scores'])
         keypoints_gt = kps_to_cv2(target['keypoints'])
         keypoints_ua = kps_to_cv2(target['keypoints_ua'])
@@ -191,8 +204,6 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
                 # FIXME temporarily removed while testing 4corner method
                 # image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
     return image
-
-
 
 def NMS(output,score_thresh=0.7,iou_thresh=0.3, num_objects=1):
     """
@@ -281,6 +292,91 @@ def make_GT_image(image, bboxes, keypointsGT, opaqueness=0.4):
             # image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
     return image
 
+def crop_image(image,crop_regions):
+    """
+    Crop multiple areas in an image.
+    Args:
+        Image: np.array of an image with shape H,W,C
+        crop_regions: an array_like with shape (C,4), where C is the number of crop regions to make in the image and each crop region consists of (x_min,y_min,x_max,y_max) representing the area to be cropped in the image.
+    Returns:
+        A list of np.array's that each represent a cropped part of the image
+    """
+    image_crops = [image[crop_region[1]:crop_region[3], crop_region[0]:crop_region[2], :]
+                   for crop_region in crop_regions]
+    return image_crops
+ 
+def crop_images(images,crop_regions_images):
+    """
+    Crop multiple areas of mulitple images. There can be a variable number of crop_regions for every image
+    Args:
+        Images: A list of np.array of images each with shape H,W,C. Sizes of each image can vary.
+        crop_regions: A list of array_like with shape (C,4), where C is the number of crop regions to make in the given image (variable) and each crop region consists of (x_min,y_min,x_max,y_max) representing the area to be cropped in the image.
+    Returns:
+        A list of lists of np.array's that each represent a cropped part of a given image
+    """
+    assert len(images) == len(crop_regions_images), f'length of images ({len(images)}) and length of crop_regions_images ({len(crop_regions_images)}) must be the same!'
+
+    images_crops = []
+    for image,crop_regions in zip(images,crop_regions_images):
+        image_crops = crop_image(image,crop_regions=crop_regions)
+        images_crops.append(image_crops)
+    return images_crops
+
+def visualize_images(images,figtitle=None,subplottitles=None,figsize=(20,20), show_axis=False):
+    n = len(images)
+    # Makes the plot dimensions in such a way that the images fit into a grid, that is as square as possible
+    plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n)))
+    if subplottitles is None:
+        subplottitles = [None for _ in range(n)]
+    fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=figsize, layout="constrained")
+    fig.suptitle(figtitle)
+    if plotdim == (1,1):
+        for image in images:
+            axes.imshow(image)
+            axes.axis(show_axis)
+    else:
+        for i,image in enumerate(images):
+            axes.ravel()[i].imshow(image)
+            axes.ravel()[i].axis(show_axis)
+            axes.ravel()[i].set_title(subplottitles[i])
+
+def visualize_cropped_results(model, images, targets, device, num_objects, figsize=(10,10), opaqueness=0.5):
+    model.eval()
+    model.to(device)
+    images = list(image.to(device) for image in images)
+    # outputs will be a list of dict of len == len(images)
+    with torch.no_grad():
+        outputs = model(images)
+    images_crops = []
+    im_ids = []
+    labels_images = []
+    scores_images = []
+    # number of pixels to crop the pred_boxes by, so you can't see the drawn bounding boxes
+    ce = 2
+    for image,target,output in zip(images,targets,outputs):
+        keypoints_gt = kps_to_cv2(target['keypoints'])
+        keypoints_ua = kps_to_cv2(target['keypoints_ua'])
+        im_id = target['image_id'].item()
+    
+        bboxes,keypoints,labels,scores = filter_preds(output,num_objects=num_objects)
+        pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt,
+                                     keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores,
+                                     labels=labels, return_scores=False)
+        # create crop_regions, making it a bit smaller so the boxes drawn on the image don't show
+        crop_regions = np.stack([to_numpy(box,as_int=True)+np.array([ce,ce,-ce,-ce]) for box in bboxes])
+        image_crops = crop_image(image=pred_image,crop_regions=crop_regions)
+        
+        images_crops.append(image_crops)
+        im_ids.append(im_id)
+        labels_images.append(labels)
+        scores_images.append(scores)
+        
+    for idx in range(len(images)):
+        visualize_images(images=images_crops[idx],
+                         figtitle=f'Image ID: {im_ids[idx]}',
+                         subplottitles=[f'label: {label}, score: {np.round(conf,3)}'
+                                        for label,conf in zip(labels_images[idx],scores_images[idx])],
+                         figsize=figsize)
 
 def plot_loss(loss_dict, save_folder, epochs):
         '''
@@ -322,4 +418,5 @@ def plot_loss(loss_dict, save_folder, epochs):
         ax.set_xlabel('Step')
         ax.set_ylabel('Loss')
         fig.savefig(os.path.join(save_folder,'loss_all_steps.png'))
+
 

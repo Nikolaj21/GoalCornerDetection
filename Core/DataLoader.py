@@ -253,20 +253,10 @@ class GoalCalibrationDataset4boxes(Dataset):
                 img = transformed['image']
                 bboxes = transformed['bboxes']
                 keypoints_combined = np.array(transformed['keypoints']).tolist()
-                # # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
-                # for kpt in keypoints_combined:
-                #     if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
-                #         kpt.append(0)
-                #     else:
-                #         kpt.append(1)
                 keypoints = keypoints_combined[:4]
                 keypoints_ua = keypoints_combined[4:]
-        
         else:
             img, bboxes, keypoints, keypoints_ua = img_original, bboxes_original, keypoints_original, keypoints_ua_original
-            # for kpt_gt,kpt_ua in zip(keypoints,keypoints_ua):
-            #     kpt_gt.append(1)
-            #     kpt_ua.append(1)
             
         imH,imW = img_original.shape[:2]
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible

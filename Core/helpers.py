@@ -21,12 +21,15 @@ def im_to_numpy(tensor):
         print('could not convert to np array. Check type of input')
         return tensor
 
-def to_numpy(tensor):
+def to_numpy(tensor, as_int=False):
     '''
     Convert torch tensor to numpy array and make sure it's detached and on cpu
     '''
     if torch.is_tensor(tensor):
-        return tensor.detach().cpu().numpy()
+        if as_int:
+            return np.array(tensor.detach().cpu(),int)
+        else:
+            return tensor.detach().cpu().numpy()
     else:
         print('could not convert to np array. Check type of input')
         return tensor
@@ -123,7 +126,7 @@ def find_pixelerror(model, data_loader, device, num_objects):
     print(f'Finding pixelerror for all predictions...')
     start_time = time.time()
     # Run through all images and get the pixel distance (error) between predictions and ground-truth
-    for images, targets in tqdm(data_loader):
+    for images, targets in data_loader:
         images = list(image.to(device) for image in images)
         # outputs will be a list of dict of len == batch_size
         with torch.no_grad():

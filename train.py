@@ -57,17 +57,29 @@ def validate_epoch(model, dataloader, device, epoch, print_freq):
         # torch.cuda.empty_cache()
     return metric_logger_val
 
-def save_model(save_folder, model, loss_dict):
+def save_model(save_folder, model, loss_dict, type):
     '''
     Save losses and weights of model
+    type: String that is either 'best' or 'last'
     '''
+
     if os.path.exists(save_folder) is False:
         os.makedirs(save_folder)
+    if type.lower() == 'last':
+        weightsname = 'weights-last.pth'
+        lossname = 'losses-last.json'
+    elif type.lower() == 'best':
+        weightsname = 'weights-best.pth'
+        lossname = 'losses-best.json'
+    else:
+        print(f'Expected argument type to be either "best" or "last", but {type} was given.')
+        return
     # save losses
-    with open(os.path.join(save_folder,'losses.json'),'w') as file:
+    with open(os.path.join(save_folder,lossname),'w') as file:
         json.dump(loss_dict, file, indent=4)
-    torch.save(model.state_dict(), os.path.join(save_folder,'weights.pth'))
+    torch.save(model.state_dict(), os.path.join(save_folder,weightsname))
     print(f'Model weights and losses saved to {save_folder}')
+    return
 
 def get_args_parser(add_help=True):
     import argparse
@@ -286,7 +298,6 @@ def main(args):
         print(f'Model has been tested!')
         return
     
-
     ###################### Training ####################################
     for epoch in range(args.epochs):
         # Run training loop
@@ -315,15 +326,27 @@ def main(args):
          # log epoch metrics to wandb dashboard
         metrics_epoch = {
             "epoch_metrics/loss_avg": {
-                "train":metric_logger.meters['loss_keypoint'].global_avg,
-                "val":metric_logger_val.meters['loss_keypoint'].global_avg
+                "train_all":metric_logger.meters['loss'].global_avg,
+                "val_all":metric_logger_val.meters['loss'].global_avg,
+                "train_keypoint":metric_logger.meters['loss_keypoint'].global_avg,
+                "val_keypoint":metric_logger_val.meters['loss_keypoint'].global_avg
             },
             "epoch_metrics/loss_total": {
-                "train":metric_logger.meters['loss_keypoint'].total,
-                "val":metric_logger_val.meters['loss_keypoint'].total
+                "train_all":metric_logger.meters['loss'].total,
+                "val_all":metric_logger_val.meters['loss'].total,
+                "train_keypoint":metric_logger.meters['loss_keypoint'].total,
+                "val_keypoint":metric_logger_val.meters['loss_keypoint'].total
+
             },
             "epoch": epoch}
         wandb.log(metrics_epoch)
+
+        # save current best model (save if loss is lower than before)
+        if epoch == 0:
+            bestloss_epoch_val_avg = metric_logger_val.meters['loss'].global_avg
+        if metric_logger_val.meters['loss'].global_avg < bestloss_epoch_val_avg:
+            save_model(save_folder=save_folder,model=model,loss_dict=loss_dict, type='best')
+            bestloss_epoch_val_avg = metric_logger_val.meters['loss'].global_avg
 
         # get intermediate prediction images and log in wandb
         if epoch % args.predims_every == 0 or epoch == (args.epochs-1):
@@ -339,8 +362,8 @@ def main(args):
 
     # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
     evaluate(model, validation_loader, device)
-    ###################### save losses and weights
-    save_model(save_folder=save_folder, model=model, loss_dict=loss_dict)
+    ###################### save losses and weights from final epoch
+    save_model(save_folder=save_folder, model=model, loss_dict=loss_dict, type='last')
 
     # plot losses and save as images in save_folder
     # plot_loss(loss_dict,save_folder,args.epochs)
@@ -355,7 +378,6 @@ def main(args):
     # Find the outliers in predictions and log them
     outliertable = prediction_outliers(pixelerrors, model, validation_loader, num_objects, device)
     wandb.log({"outliers_table": outliertable})
-
 def test(args):
     # just a test function
     print('before change')
