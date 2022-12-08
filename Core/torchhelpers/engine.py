@@ -106,7 +106,7 @@ def evaluate(model, data_loader, device):
     print(f'timing function get_coco_api_from_dataset')
     timer_for_fun = time.time()
     coco = get_coco_api_from_dataset(data_loader.dataset)
-    print(f'Time of function get_coco_api_from_dataset: {time.time()-timer_for_fun} ({(time.time()-timer_for_fun)/60:.2f} min)')
+    print(f'Time of function get_coco_api_from_dataset: {time.time()-timer_for_fun} s ({(time.time()-timer_for_fun)/60:.2f} min)')
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types, kp_oks_sigma_init)
 

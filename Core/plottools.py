@@ -205,29 +205,26 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
                 # image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
     return image
 
-def NMS(output,score_thresh=0.7,iou_thresh=0.3, num_objects=1):
+def NMS(output,score_thresh=0.7,iou_thresh=0.3, num_objects=4):
     """
     Perform non-maximum suppresion on a single output
-    output: dict containing the prediction results for image.
-        keys (minimum): keypoints, scores, boxes
-    returns the updated bboxes and keypoints that passed nms
+    Args:
+        output: dict containing the prediction results for image.
+            keys (minimum): keypoints, scores, boxes
+    Returns: the updated bboxes and keypoints that passed nms
     """
-    scores = to_numpy(output['scores'])
-    
-    if len(scores) >= num_objects: # there should be at least as many predictions as there are ground-truth objects
-        # Indexes of boxes with scores > score_thresh
-        high_scores_idxs = np.where(scores > score_thresh)[0].tolist()
-        # if there are less predictions above the threshold than the number of gt objects, take as many predictions as there are objects
-        high_scores_idxs = high_scores_idxs if len(high_scores_idxs) >= num_objects else [i for i in range(num_objects)]
-    else: # take all predictions
-        high_scores_idxs = [i for i in range(len(scores))]
-
+    all_scores = to_numpy(output['scores'])
+    # Indexes of boxes with scores > score_thresh
+    high_scores_idxs = np.where(all_scores > score_thresh)[0]
+    # perform non-maximum suppresion on the predictions with high score, so there are no overlapping predicitions
     post_nms_idxs = torchvision.ops.nms(output['boxes'][high_scores_idxs], output['scores'][high_scores_idxs], iou_thresh).cpu().numpy() # Indexes of boxes left after applying NMS (iou_threshold=iou_thresh)
 
-    keypoints = output['keypoints'][high_scores_idxs][post_nms_idxs]
-    bboxes = output['boxes'][high_scores_idxs][post_nms_idxs]
+    keypoints = output['keypoints'][post_nms_idxs]
+    bboxes = output['boxes'][post_nms_idxs]
+    labels = output['labels'][post_nms_idxs]
+    scores = output['scores'][post_nms_idxs]
 
-    return bboxes,keypoints
+    return bboxes,keypoints,labels,scores
 
 def filter_preds(output, num_objects):
     """

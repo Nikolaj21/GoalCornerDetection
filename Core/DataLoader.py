@@ -12,7 +12,7 @@ from pathlib import Path
 
 # data loader for the data before it was re-annotated
 class GoalCalibrationDatasetOLD(Dataset):
-    def __init__(self,datapath, transforms=None, istrain=False, filter_data=True):
+    def __init__(self,datapath, transforms=None, filter_data=True):
         self.num_objectclasses_per_image = 1
         self.num_keypoints_per_object = 4
         # list of paths to the images
@@ -22,7 +22,6 @@ class GoalCalibrationDatasetOLD(Dataset):
         # list of paths to the re-annoated data
         self.reannotate_list = sorted(glob.glob(datapath + '/FootballGoalCorners/AnnotationFiles/*.json'))
         self.transforms = transforms
-        self.istrain = istrain
 
         if filter_data:
             # self.img_list_filtered, self.annotation_list_filtered = filter_data(self.img_list,self.annotation_list)
@@ -83,15 +82,14 @@ class GoalCalibrationDatasetOLD(Dataset):
 
         # All objects are goal
         bboxes_labels_original = ['goal' for _ in bboxes_original]
-        if self.istrain:
-            if self.transforms:
+        if self.transforms:
 
-                # Apply augmentations
-                transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
-                img = transformed['image']
-                bboxes = transformed['bboxes']
-                keypoints = np.array(transformed['keypoints']).tolist()
-        
+            # Apply augmentations
+            transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
+            img = transformed['image']
+            bboxes = transformed['bboxes']
+            keypoints = np.array(transformed['keypoints']).tolist()
+    
         else:
             img, bboxes, keypoints = img_original, bboxes_original, keypoints_original 
 
@@ -128,7 +126,7 @@ class GoalCalibrationDatasetOLD(Dataset):
 ############################################################
 ## data loader for the newly annotated dataset (with option of data augmentation)
 class GoalCalibrationDataset(Dataset):
-    def __init__(self,datapath, transforms=None, istrain=False, filter_data=True):
+    def __init__(self,datapath, transforms=None, filter_data=True):
         self.num_objectclasses_per_image = 1
         self.num_keypoints_per_object = 4
         self.img_list = sorted(glob.glob(str(Path(datapath + '/*/*.jpg'))))
@@ -138,7 +136,6 @@ class GoalCalibrationDataset(Dataset):
             self.img_list_filtered, self.annotation_list_filtered, self.old_idxs = filter_data_lists(self.img_list,self.annotation_list)
         else:
             self.img_list_filtered, self.annotation_list_filtered, self.old_idxs = self.img_list, self.annotation_list, [i for i in range(len(self.img_list))]
-        self.istrain = istrain
         self.transforms = transforms
         
 
@@ -163,15 +160,14 @@ class GoalCalibrationDataset(Dataset):
 
         # All objects are goal
         bboxes_labels_original = ['goal' for _ in bboxes_original]
-        if self.istrain:
-            if self.transforms:
 
-                # Apply augmentations
-                transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
-                img = transformed['image']
-                bboxes = transformed['bboxes']
-                keypoints = np.array(transformed['keypoints']).tolist()
-        
+        if self.transforms:
+            # Apply augmentations
+            transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
+            img = transformed['image']
+            bboxes = transformed['bboxes']
+            keypoints = np.array(transformed['keypoints']).tolist()
+    
         else:
             img, bboxes, keypoints = img_original, bboxes_original, keypoints_original 
 
@@ -203,7 +199,7 @@ class GoalCalibrationDataset(Dataset):
 ############################################################
 ## data loader for making a bounding box around every corner
 class GoalCalibrationDataset4boxes(Dataset):
-    def __init__(self,datapath, transforms=None, istrain=False, filter_data=True):
+    def __init__(self,datapath, transforms=None, filter_data=True):
         self.num_objectclasses_per_image = 4
         self.num_keypoints_per_object = 1
         self.img_list = sorted(glob.glob(str(Path(datapath + '/*/*.jpg'))))
@@ -215,9 +211,10 @@ class GoalCalibrationDataset4boxes(Dataset):
             self.img_list_filtered, self.annotation_list_filtered, self.userannotation_list_filtered, self.old_idxs = filter_data_lists(self.img_list,self.annotation_list,self.userannotation_list)
         else:
             self.img_list_filtered, self.annotation_list_filtered, self.userannotation_list_filtered, self.old_idxs = self.img_list, self.annotation_list, self.userannotation_list, [i for i in range(len(self.img_list))]
-        self.istrain = istrain
         self.transforms = transforms
-        
+        # load the net noise image and resize to image size
+        noise_pat = cv2.imread(str(Path(datapath + '/mesh_netting.png')))
+        self.netting_im = np.invert(noise_pat)
 
     def  __len__(self):
         return len(self.annotation_list_filtered)
@@ -241,20 +238,20 @@ class GoalCalibrationDataset4boxes(Dataset):
         # make bounding boxes
         bboxes_original = make_gt_boxes(img_original, keypoints_original, expand_x=0.05, expand_y=0.05)
 
-        
-        if self.istrain:
-            if self.transforms:
-                # Each object is a corner of the goal
-                bboxes_labels_original = [1,2,3,4]
-                # concatenate gt and ua keypoints to do transformations
-                keypoints_original_combined = np.concatenate((keypoints_original,keypoints_ua_original))
-                # Apply augmentations
-                transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original_combined)
-                img = transformed['image']
-                bboxes = transformed['bboxes']
-                keypoints_combined = np.array(transformed['keypoints']).tolist()
-                keypoints = keypoints_combined[:4]
-                keypoints_ua = keypoints_combined[4:]
+        if self.transforms:
+            # Each object is a corner of the goal
+            bboxes_labels_original = [1,2,3,4]
+            # concatenate gt and ua keypoints to do transformations
+            keypoints_original_combined = np.concatenate((keypoints_original,keypoints_ua_original))
+            # Apply augmentations
+            transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original_combined)
+            img = transformed['image']
+            # add fake netting augmentation to image with probability p
+            img = put_fake_netting(img,self.netting_im,p=0.25)
+            bboxes = transformed['bboxes']
+            keypoints_combined = np.array(transformed['keypoints']).tolist()
+            keypoints = keypoints_combined[:4]
+            keypoints_ua = keypoints_combined[4:]
         else:
             img, bboxes, keypoints, keypoints_ua = img_original, bboxes_original, keypoints_original, keypoints_ua_original
             
@@ -355,7 +352,26 @@ def train_transform():
         bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bboxes_labels']) # Bboxes should have labels, read more at https://albumentations.ai/docs/getting_started/bounding_boxes_augmentation/
     )
 
+def put_fake_netting(img,netting_im,p=0.5):
+    alpha = torch.rand(1)
+    im_shape = img.shape
+    if alpha <= p:
+        net_transform = A.Compose([
+        A.Rotate(p=0.9),
+        # A.RandomSizedCrop(min_max_height=[20, 50], height=128, width=128, interpolation=cv2.INTER_NEAREST),
+        A.Resize(height=im_shape[0],width=im_shape[1]),
+        A.GaussianBlur(blur_limit=(3, 15)),
+        ])
+        # to_tensor_tf = T.ToTensor()
 
+        trans = net_transform(image=netting_im)    
+        # timg = to_tensor_tf(trans['image'])
+        timg = trans['image']
+        # net_int = torch.rand(1)
+        net_int = np.random.random()
+        # img[timg > torch.max(timg)/4] = net_int/4
+        img[timg > np.max(timg)/4] = net_int/4
+    return img
 ############################################################
 ############################################################
 ## data loader for heatmap regression

@@ -96,8 +96,8 @@ def test_num_workers(data, batch_size, data_amount=1, pin_memory = False):
     _,data = random_split(data, [int(np.ceil((1-data_amount)*len(data))), int(np.floor(data_amount*len(data)))])
     print('pin_memory is', pin_memory)
     
-    for num_workers in range(1, 20): 
-        dataloader = torch.utils.data.DataLoader(data, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory)
+    for num_workers in range(0, 20):
+        dataloader = torch.utils.data.DataLoader(data, batch_size=batch_size, collate_fn=collate_fn, num_workers=num_workers, pin_memory=pin_memory)
         start = time.time()
         # Simulate running epochs
         for _ in range(1):

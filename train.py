@@ -18,6 +18,7 @@ from torchvision.models.detection.rpn import AnchorGenerator
 import json
 import wandb
 import importlib
+import time
 
 def validate_epoch(model, dataloader, device, epoch, print_freq):
     '''
@@ -68,9 +69,11 @@ def save_model(save_folder, model, loss_dict, type):
     if type.lower() == 'last':
         weightsname = 'weights-last.pth'
         lossname = 'losses-last.json'
+        message = f'Model weights and losses saved to {save_folder}'
     elif type.lower() == 'best':
         weightsname = 'weights-best.pth'
         lossname = 'losses-best.json'
+        message = ''
     else:
         print(f'Expected argument type to be either "best" or "last", but {type} was given.')
         return
@@ -78,7 +81,7 @@ def save_model(save_folder, model, loss_dict, type):
     with open(os.path.join(save_folder,lossname),'w') as file:
         json.dump(loss_dict, file, indent=4)
     torch.save(model.state_dict(), os.path.join(save_folder,weightsname))
-    print(f'Model weights and losses saved to {save_folder}')
+    print(message)
     return
 
 def get_args_parser(add_help=True):
@@ -89,7 +92,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("-b", "--batch-size", default=4, type=int, help="images per gpu, the total batch size is $NGPU x batch_size")
     parser.add_argument("--validation-split", default=0.25, type=float, help="Fraction of the data to use as the validation set (float between 0 and 1)")
     parser.add_argument("--epochs", default=2, type=int, metavar="N", help="number of total epochs to run")
-    parser.add_argument("--workers", default=6, type=int, metavar="N", help="number of data loading workers (default: 6)")
+    parser.add_argument("--workers", default=2, type=int, metavar="N", help="number of data loading workers (default: 6)")
     parser.add_argument("--opt", default="adam", type=str, help="optimizer, either sgd or adam")
     parser.add_argument("--lr",default=0.001,type=float,help="initial learning rate, 0.02 is the default value for training on 8 gpus and 2 images_per_gpu")
     parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum to use in the optimizer")
@@ -169,7 +172,8 @@ def main(args):
             "shuffle_epoch": args.shuffle_epoch,
             "shuffle_epoch_seed": args.shuffle_epoch_seed,
             "filter_data": args.filter_data,
-            "data_augmentation": args.data_aug
+            "data_augmentation": args.data_aug,
+            "workers": args.workers
             }
         )
     # Define custom x-axis metric
@@ -203,15 +207,16 @@ def main(args):
     lr={args.lr}
     momentum={args.momentum}
     weight_decay={args.weight_decay}
+    num_workers={args.workers}
     """)
 
     # initialize an instance of the dataloader class, one for train and one for validation
     if args.data_aug:
-        GoalData_train = DataClass(args.data_dir,transforms=train_transform(),istrain=True,filter_data=args.filter_data)
+        GoalData_train = DataClass(args.data_dir, transforms=train_transform(), filter_data=args.filter_data)
     else:
-        GoalData_train = DataClass(args.data_dir,transforms=None,istrain=False,filter_data=args.filter_data)
+        GoalData_train = DataClass(args.data_dir, transforms=None, filter_data=args.filter_data)
 
-    GoalData_val = DataClass(args.data_dir,transforms=None,istrain=False, filter_data=args.filter_data)
+    GoalData_val = DataClass(args.data_dir, transforms=None, filter_data=args.filter_data)
 
     num_objects = GoalData_val.num_objectclasses_per_image # number of object classes in this model
     num_keypoints = GoalData_val.num_keypoints_per_object # number of keypoints to predict per object
@@ -228,20 +233,20 @@ def main(args):
                                                             shuffle_dataset_seed=args.shuffle_dataset_seed,
                                                             shuffle_epoch = args.shuffle_epoch,
                                                             shuffle_epoch_seed=args.shuffle_epoch_seed,
-                                                            pin_memory=False) # pin_memory was false before running last training
+                                                            pin_memory=False) # setting to True (makes it fail) speeds up host to device transfer when loading on cpu and pushing to gpu for training
     # Setting hyper-parameters
-    #FIXME better aspect ratios for the anchor boxes needs to be decided. I would drop anything below 1 and above 3
+    # old anchor generator
     # anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
     # the different sizes to use for the anchor boxes
     anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
     # list of possible aspect_ratios to use, due to different models being trained on different number of aspect_ratios
     aspect_ratios_all = (1.0, 4208/3120, 2.0, 2.5, 3.0, 0.5, 4.0)
     if args.test_only:
-        # torch.backends.cudnn.deterministic = True
+        # finds the number of aspect ratios used from the state_dict if loading a previously trained model
         state_dict = torch.load(args.load_path)
         number_aspect_ratios = len(state_dict.get('rpn.head.cls_logits.bias'))
         aspect_ratios_anchors = (aspect_ratios_all[:number_aspect_ratios], ) * len(anchor_sizes)
-    else:
+    else: # make an anchor generator with 3 aspect_ratios
         # which aspect ratios to use for every anchor size. Assumes aspect_ratio = height / width
         aspect_ratios_anchors = (aspect_ratios_all[:3], ) * len(anchor_sizes)
     anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
@@ -298,6 +303,7 @@ def main(args):
         print(f'Model has been tested!')
         return
     
+    best_epoch = None
     ###################### Training ####################################
     for epoch in range(args.epochs):
         # Run training loop
@@ -347,6 +353,8 @@ def main(args):
         if metric_logger_val.meters['loss'].global_avg < bestloss_epoch_val_avg:
             save_model(save_folder=save_folder,model=model,loss_dict=loss_dict, type='best')
             bestloss_epoch_val_avg = metric_logger_val.meters['loss'].global_avg
+            print(f'New best validation loss achieved. Model saved at epoch {epoch}')
+            best_epoch = epoch
 
         # get intermediate prediction images and log in wandb
         if epoch % args.predims_every == 0 or epoch == (args.epochs-1):
@@ -364,6 +372,7 @@ def main(args):
     evaluate(model, validation_loader, device)
     ###################### save losses and weights from final epoch
     save_model(save_folder=save_folder, model=model, loss_dict=loss_dict, type='last')
+    print(f'Best model achieved at epoch {best_epoch}.')
 
     # plot losses and save as images in save_folder
     # plot_loss(loss_dict,save_folder,args.epochs)
