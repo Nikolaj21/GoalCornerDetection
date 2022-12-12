@@ -1,23 +1,15 @@
 import os
+print(f'current path: {os.getcwd()}')
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
-print(f'current path: {os.getcwd()}')
-import torch
-import sys
-# sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-# device = torch.device('cpu')
-print(f'Running on {device}')
-from Core.DataLoader import GoalCalibrationDataset4boxes, GoalCalibrationDataset, train_transform
-from torchvision.models.detection import keypointrcnn_resnet50_fpn
-from torchvision.models.detection.rpn import AnchorGenerator
-from Core.helpers import eval_PCK,split_data_train_test, test_num_workers
-from utils import DATA_DIR
-import matplotlib.pyplot as plt
-import time
-import numpy as np
 
 def terminaltest():
+    import torch
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    print(f'Running on {device}')
+    from torchvision.models.detection import keypointrcnn_resnet50_fpn
+    from torchvision.models.detection.rpn import AnchorGenerator
+
     anchor_generator = AnchorGenerator(sizes=(128, 256, 512, 1024, 2048), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
     # remember to update with correct model weights.pth
     load_path = r'/zhome/60/1/118435/Master_Thesis/Runs/tester_sgd_da_50epochs/weights.pth'
@@ -27,6 +19,18 @@ def terminaltest():
     return model
 
 def testPCK():
+    import torch
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    # device = torch.device('cpu')
+    print(f'Running on {device}')
+    from Core.DataLoader import GoalCalibrationDataset4boxes, GoalCalibrationDataset, train_transform
+    from torchvision.models.detection import keypointrcnn_resnet50_fpn
+    from torchvision.models.detection.rpn import AnchorGenerator
+    from Core.helpers import eval_PCK,split_data_train_test
+    from utils import DATA_DIR
+    import matplotlib.pyplot as plt
+    import time
+    import numpy as np
     anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
     # remember to update with correct model weights.pth
     load_path = r"/zhome/60/1/118435/Master_Thesis/Scratch/s163848/Runs/1box_check_5epochs/weights.pth"
@@ -70,6 +74,20 @@ def testPCK():
     print('We are DONE :)')
 
 def test_dataloader_speed():
+    import torch
+    import sys
+    # sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    # device = torch.device('cpu')
+    print(f'Running on {device}')
+    from Core.DataLoader import GoalCalibrationDataset4boxes, GoalCalibrationDataset, train_transform
+    from torchvision.models.detection import keypointrcnn_resnet50_fpn
+    from torchvision.models.detection.rpn import AnchorGenerator
+    from Core.helpers import eval_PCK,split_data_train_test, test_num_workers
+    from utils import DATA_DIR
+    import matplotlib.pyplot as plt
+    import time
+    import numpy as np
     num_workers = 2
     print(f'num_workers: {num_workers}')
     GoalData = GoalCalibrationDataset4boxes(DATA_DIR)
@@ -131,9 +149,35 @@ def test_dataloader_speed():
         print(f'Time for run {i}: {runtime} s ({runtime/60:.2f} min)')
     print(f'Average time pin_memory=True: {np.mean(times)} s ({np.mean(times)/60:.2f} min)')
 
+def test_paths():
+    import os
+    from pathlib import Path,PurePath
+    import glob
+    ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
+    DATA_DIR = os.path.join(ROOT_DIR,'Data')
+    test_dir = Path(__file__)
+    print(f'DATA_DIR: {DATA_DIR}')
+    print(f'test_dir: {test_dir}')
+    r_dir = PurePath(ROOT_DIR)
+    print(f'r_dir: {r_dir}')
+    datapath = 'C:\\Users\\Nikolaj\\OneDrive - Danmarks Tekniske Universitet\\DTU\\Kandidat\\MasterThesis\\Code\\GoalCornerDetection\\Data'
+    data_purepath = PurePath(datapath)
+    print(f"wdd joined with crap: {os.path.join(datapath,'/*/*.jpg')}")
+    print(f"wdd_path joined with crap: {os.path.join(data_purepath,PurePath('/*/*.jpg'))}")
+    print(f"wdd pathed with crap: {Path(datapath+'/*/*.jpg')}")
+
+    # img_list = sorted(glob.glob(str(Path(datapath + '/*/*.jpg'))))
+    # glob_path = str(Path( str(Path(datapath)) + str(Path('/*/*.jpg')) ))
+    glob_path = str(Path(datapath+'/*/*.jpg'))
+    
+    print(f'glob_path: {glob_path}')
+    img_list = sorted(glob.glob(glob_path))
+    print(f'img_list items:\n{img_list[:3]}')
+
 def main():
     # testPCK()
-    test_dataloader_speed()
+    # test_dataloader_speed()
+    test_paths()
 
 if __name__ == "__main__":
     main()

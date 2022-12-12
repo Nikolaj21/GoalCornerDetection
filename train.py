@@ -19,6 +19,7 @@ import json
 import wandb
 import importlib
 import time
+from pathlib import Path
 
 def validate_epoch(model, dataloader, device, epoch, print_freq):
     '''
@@ -110,7 +111,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--shuffle-epoch", choices=('True','False'), default='True', help="Shuffle data in each epoch. Default: True")
     parser.add_argument("--shuffle-dataset-seed", default=-1, type=int, help="Seed for shuffling dataset. Related to --shuffle-dataset. Default: -1, means no seed is set.")
     parser.add_argument("--shuffle-epoch-seed", default=-1, type=int, help="Seed for shuffling at every epoch. Related to --shuffle-epoch. Default: -1, means no seed is set.")
-    parser.add_argument("--model-type", default="4Box", choices=('1boxOLD','1box','4box'), help="Changes which type of model is run. Affects which dataloader is called and some parameters of the model. Default: 4box")
+    parser.add_argument("--model-type", default="4box", choices=('1boxOLD','1box','4box'), help="Changes which type of model is run. Affects which dataloader is called and some parameters of the model. Default: 4box")
     parser.add_argument("--filter-data", choices=('True','False'), default='True', help="Shuffle which data ends up in train set and validation set. Default: True")
 
     return parser
@@ -192,7 +193,8 @@ def main(args):
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print(f'Running on {device}')
     ### Set save path ###
-    save_folder = os.path.join(args.output_dir, args.model_name + f'_{args.epochs}epochs/')
+    # save_folder = os.path.join(args.output_dir, args.model_name + f'_{args.epochs}epochs/')
+    save_folder = str(Path(args.output_dir + '/'+args.model_name + f'_{args.epochs}epochs/'))
     # print options used in training
     print(f"""
     ####################
@@ -362,14 +364,14 @@ def main(args):
             images,targets = next(iter(validation_loader))
             pred_images = get_prediction_images(model,images,targets,device, num_objects=num_objects,opaqueness=0.5)
 
-            pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
+            pred_images_dict = {f'Image_ID_{image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
             pred_images_dict['epoch'] = epoch
             wandb.log(pred_images_dict)
 
     print('\nFINISHED TRAINING :) #################################################################################\n')
 
     # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
-    evaluate(model, validation_loader, device)
+    # evaluate(model, validation_loader, device)
     ###################### save losses and weights from final epoch
     save_model(save_folder=save_folder, model=model, loss_dict=loss_dict, type='last')
     print(f'Best model achieved at epoch {best_epoch}.')
