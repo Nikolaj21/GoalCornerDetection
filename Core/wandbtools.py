@@ -34,9 +34,26 @@ def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
     '''
     data = []
     for cat,metrics in errors_dict.items():
-        # extracts the errors list and discards the image ids and labels
-        _,_,errors = zip(*metrics)
-        Ndata = len(errors)
+        if len(metrics) > 0:
+            # extracts the errors list and discards the image ids and labels
+            _,_,errors = zip(*metrics)
+        else:
+            print(f'category: {cat} did not have any elements, skipping...')
+            continue
+        # find the missing predictions, i.e. when a corner is not predicted at all in an image
+        missing_tuplist = [(image_id,label,error) for image_id,label,error in metrics if error is None]
+        num_missing_preds = len(missing_tuplist)
+        if num_missing_preds > 0:
+            missing_ids, missing_labels, _ = zip(*missing_tuplist)
+            # filter duplicate missing_ids, but keep all missing_labels that way we don't get duplicate missing_predims
+            missing_ids = tuple(set(missing_ids))
+            data_missing = [data_loader.dataset.dataset.__getitem__(i) for i in missing_ids]
+            missingimages,missingtargets = zip(*data_missing)
+            missing_predims = get_prediction_images(model=model,images=missingimages,targets=missingtargets,device=device,num_objects=num_objects)
+            missing_predims_list = [wandb.Image(image_array, caption=f"Prediction with missing corner(s), Image ID: {image_id}") for image_id,image_array in missing_predims.items()]
+        else:
+            missing_ids, missing_predims_list, missing_labels = (),(),()
+        Ndata = len(errors) - num_missing_preds
         minval = np.min(errors)
         maxval = np.max(errors)
         std = np.std(errors)
@@ -46,18 +63,20 @@ def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
         inlier_min = np.maximum(mean-3*std,0)
         inlier_max = mean+3*std
         outliers_tuplist = [(image_id,label,error) for image_id,label,error in metrics if not inlier_min <= error <= inlier_max]
-        outlier_ids, outlier_labels, outliers = zip(*outliers_tuplist)
-        # filter duplicate outlier_ids, but keep all outlier_labels and outliers (error values) that way we don't get duplicate outlier_predims
-        outlier_ids = tuple(set(outlier_ids))
-        num_outliers = len(outliers)
+        num_outliers = len(outliers_tuplist)
         pct_outliers = num_outliers / Ndata
-        data_plot = [data_loader.dataset.dataset.__getitem__(i) for i in outlier_ids]
-        outlierimages,outliertargets = zip(*data_plot)
-        outlier_predims = get_prediction_images(model=model,images=outlierimages,targets=outliertargets,device=device,num_objects=num_objects)
-        outlier_predims_list = [wandb.Image(image_array, caption=f"Prediction Outlier, Image ID: {image_id}") for image_id,image_array in outlier_predims.items()]
-
-        data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids, outlier_predims_list, outlier_labels))
-    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers', 'outlier_im_ids', 'outlier_ims', 'outlier_labels'])
+        if num_outliers > 0:
+            outlier_ids, outlier_labels, outliers = zip(*outliers_tuplist)
+            # filter duplicate outlier_ids, but keep all outlier_labels and outliers (error values) that way we don't get duplicate outlier_predims
+            outlier_ids = tuple(set(outlier_ids))
+            data_plot = [data_loader.dataset.dataset.__getitem__(i) for i in outlier_ids]
+            outlierimages,outliertargets = zip(*data_plot)
+            outlier_predims = get_prediction_images(model=model,images=outlierimages,targets=outliertargets,device=device,num_objects=num_objects)
+            outlier_predims_list = [wandb.Image(image_array, caption=f"Prediction Outlier, Image ID: {image_id}") for image_id,image_array in outlier_predims.items()]
+        else:
+            outliers, outlier_ids, outlier_predims_list, outlier_labels = (),(),(),()
+        data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids, outlier_predims_list, outlier_labels, num_missing_preds, missing_ids, missing_predims_list, missing_labels))
+    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers', 'outlier_ids', 'outlier_ims', 'outlier_labels', '#missing_corners', 'missing_ids', 'missing_ims', 'missing_labels'])
     return table
 
 def wandbapi_load_run(run_path):
@@ -149,16 +168,16 @@ def make_UA_PCK_curve():
             }
         )
     # initialize an instance of the dataloader
-    GoalDataGT = GoalCalibrationDataset(DATA_DIR,transforms=None,istrain=False)
-    GoalDataUA = GoalCalibrationDatasetOLD(DATA_DIR,transforms=None,istrain=False)
+    GoalDataGT = GoalCalibrationDataset(DATA_DIR,transforms=None)
+    GoalDataUA = GoalCalibrationDatasetOLD(DATA_DIR,transforms=None)
     # put dataloader into pytorch dataloader
     _,GT_loader = split_data_train_test(
                                         GoalDataGT,
                                         GoalDataGT,
                                         validation_split=validation_split,
-                                        batch_size=4,
+                                        batch_size=8,
                                         data_amount=data_amount,
-                                        num_workers=3,
+                                        num_workers=6,
                                         shuffle_dataset=shuffle_dataset,
                                         shuffle_dataset_seed=shuffle_dataset_seed,
                                         shuffle_epoch=shuffle_epoch,
@@ -167,9 +186,9 @@ def make_UA_PCK_curve():
                                         GoalDataUA,
                                         GoalDataUA,
                                         validation_split=validation_split,
-                                        batch_size=4,
+                                        batch_size=8,
                                         data_amount=data_amount,
-                                        num_workers=3,
+                                        num_workers=6,
                                         shuffle_dataset=shuffle_dataset,
                                         shuffle_dataset_seed=shuffle_dataset_seed,
                                         shuffle_epoch=shuffle_epoch,

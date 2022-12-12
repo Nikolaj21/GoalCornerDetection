@@ -19,6 +19,7 @@ import json
 import wandb
 import importlib
 import time
+from pathlib import Path
 
 def validate_epoch(model, dataloader, device, epoch, print_freq):
     '''
@@ -173,7 +174,7 @@ def main(args):
             "shuffle_epoch_seed": args.shuffle_epoch_seed,
             "filter_data": args.filter_data,
             "data_augmentation": args.data_aug,
-            "workers": args.workers
+            "num_workers": args.workers
             }
         )
     # Define custom x-axis metric
@@ -192,7 +193,8 @@ def main(args):
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     print(f'Running on {device}')
     ### Set save path ###
-    save_folder = os.path.join(args.output_dir, args.model_name + f'_{args.epochs}epochs/')
+    # save_folder = os.path.join(args.output_dir, args.model_name + f'_{args.epochs}epochs/')
+    save_folder = str(Path(args.output_dir + args.model_name + f'_{args.epochs}epochs/'))
     # print options used in training
     print(f"""
     ####################

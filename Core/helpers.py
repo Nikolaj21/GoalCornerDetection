@@ -154,6 +154,8 @@ def find_pixelerror(model, data_loader, device, num_objects):
                     # find the distance between every gt and gt for this label, and add to list of distances, along with the image_id
                     for gt,dt in zip(obj_gt,obj_dt):
                         pixelerrors_all.append((target['image_id'].item(), label, np.linalg.norm(dt[:2]-gt[:2])))
+                else: # the label is missing, add an identifier (None) so it is clear that this is a missing corner prediction
+                    pixelerrors_all.append((target['image_id'].item(), label, None))
     if num_objects == 1:
         num_keypoints = 4
         pixelerrors_TL = pixelerrors_all[0::num_keypoints]

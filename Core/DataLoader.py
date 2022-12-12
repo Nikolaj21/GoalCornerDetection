@@ -171,10 +171,13 @@ class GoalCalibrationDataset(Dataset):
         else:
             img, bboxes, keypoints = img_original, bboxes_original, keypoints_original 
 
+        # # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
+        # for kpt in keypoints:
+        #     kpt.append(1)
+        imH,imW = img_original.shape[:2]
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
-        for kpt in keypoints:
-            kpt.append(1)
-
+        keypoints, keypoints_ua = add_visibility_flag(keypoints,keypoints_ua,imH,imW)
+        
         # convert image to tensor of shape C,H,W
         img_tensor = F.to_tensor(img)
         # convert keypoints to tensor
@@ -257,17 +260,18 @@ class GoalCalibrationDataset4boxes(Dataset):
             
         imH,imW = img_original.shape[:2]
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
-        for kpt in keypoints:
-            if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
-                kpt.append(0)
-            else:
-                kpt.append(1)
-        # change format for ua keypoints
-        for kpt in keypoints_ua:
-            if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
-                kpt.append(0)
-            else:
-                kpt.append(1)
+        keypoints, keypoints_ua = add_visibility_flag(keypoints,keypoints_ua,imH,imW)
+        # for kpt in keypoints:
+        #     if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
+        #         kpt.append(0)
+        #     else:
+        #         kpt.append(1)
+        # # change format for ua keypoints
+        # for kpt in keypoints_ua:
+        #     if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
+        #         kpt.append(0)
+        #     else:
+        #         kpt.append(1)
 
         # convert image to tensor
         img_tensor = F.to_tensor(img)
@@ -372,6 +376,31 @@ def put_fake_netting(img,netting_im,p=0.5):
         # img[timg > torch.max(timg)/4] = net_int/4
         img[timg > np.max(timg)/4] = net_int/4
     return img
+
+def add_visibility_flag(keypoints,keypoints_ua,H,W):
+    '''
+    Adds the visibility flag to the gt and ua keypoints
+    Args:
+        keypoints: a np.array of gt keypoints with shape (N,K,2)
+        keypoints: a np.array of ua keypoints with shape (N,K,2)
+        H: Height of the image
+        W: Width of the image
+    Returns: the gt and ua keypoints updated with visibility flag, i.e. now with shape (N,K,3)
+    '''
+    # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
+    for kpt in keypoints:
+        if not (0 <= kpt[0] <= W and 0 <= kpt[1] <= H):
+            kpt.append(0)
+        else:
+            kpt.append(1)
+    # change format for ua keypoints
+    for kpt in keypoints_ua:
+        if not (0 <= kpt[0] <= W and 0 <= kpt[1] <= H):
+            kpt.append(0)
+        else:
+            kpt.append(1)
+    return keypoints,keypoints_ua
+
 ############################################################
 ############################################################
 ## data loader for heatmap regression
