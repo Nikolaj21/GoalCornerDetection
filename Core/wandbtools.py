@@ -32,8 +32,11 @@ def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
     args:
         data_loader: assumes a pytorch dataloader that is defined with a torch.util.data.Subset 
     '''
+    print('Making summary statistics of errors for outliers table...')
     data = []
-    for cat,metrics in errors_dict.items():
+    for cat,metrics_og in errors_dict.items():
+        # filter missing elements (with value None) out of metrics (list of tuples)
+        metrics = [metric for metric in metrics_og if metric[2] is not None]
         if len(metrics) > 0:
             # extracts the errors list and discards the image ids and labels
             _,_,errors = zip(*metrics)
@@ -41,7 +44,7 @@ def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
             print(f'category: {cat} did not have any elements, skipping...')
             continue
         # find the missing predictions, i.e. when a corner is not predicted at all in an image
-        missing_tuplist = [(image_id,label,error) for image_id,label,error in metrics if error is None]
+        missing_tuplist = [(image_id,label,error) for image_id,label,error in metrics_og if error is None]
         num_missing_preds = len(missing_tuplist)
         if num_missing_preds > 0:
             missing_ids, missing_labels, _ = zip(*missing_tuplist)
@@ -53,11 +56,12 @@ def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
             missing_predims_list = [wandb.Image(image_array, caption=f"Prediction with missing corner(s), Image ID: {image_id}") for image_id,image_array in missing_predims.items()]
         else:
             missing_ids, missing_predims_list, missing_labels = (),(),()
-        Ndata = len(errors) - num_missing_preds
+        Ndata = len(errors)
         minval = np.min(errors)
         maxval = np.max(errors)
         std = np.std(errors)
         mean = np.mean(errors)
+        MSE = np.mean(np.array(errors)**2)
         median = np.median(errors)
         # make sure the inliner_min doesn't go below 0
         inlier_min = np.maximum(mean-3*std,0)
@@ -75,9 +79,65 @@ def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
             outlier_predims_list = [wandb.Image(image_array, caption=f"Prediction Outlier, Image ID: {image_id}") for image_id,image_array in outlier_predims.items()]
         else:
             outliers, outlier_ids, outlier_predims_list, outlier_labels = (),(),(),()
-        data.append((cat, Ndata, minval, maxval, std, mean, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids, outlier_predims_list, outlier_labels, num_missing_preds, missing_ids, missing_predims_list, missing_labels))
-    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers', 'outlier_ids', 'outlier_ims', 'outlier_labels', '#missing_corners', 'missing_ids', 'missing_ims', 'missing_labels'])
+        data.append((cat, Ndata, minval, maxval, std, mean, MSE, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids, outlier_predims_list, outlier_labels, num_missing_preds, missing_ids, missing_predims_list, missing_labels))
+    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'MSE', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers', 'outlier_ids', 'outlier_ims', 'outlier_labels', '#missing_corners', 'missing_ids', 'missing_ims', 'missing_labels'])
+    print('DONE')
     return table
+
+def get_config():
+    return
+def sweep():
+    import random
+    # Define sweep config
+    sweep_configuration = {
+        'method': 'random',
+        'name': 'sweep',
+        'metric': {'goal': 'minimize', 'name': 'validation_loss'},
+        'parameters': 
+        {
+            'batch_size': {'values': [4,8,16,32]},
+            'epochs': {'values': [20,30,40,50]},
+            'lr': {'max': 0.1, 'min': 0.0001}
+        }
+    }
+
+    # Initialize sweep by passing in config. (Optional) Provide a name of the project.
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project='my-first-sweep')
+
+    # Define training function that takes in hyperparameter values from `wandb.config` and uses them to train a model and return metric
+    def train_one_epoch(epoch, lr, bs): 
+        acc = 0.25 + ((epoch/30) +  (random.random()/10))
+        loss = 0.2 + (1 - ((epoch-1)/10 +  random.random()/5))
+        return acc, loss
+
+    def evaluate_one_epoch(epoch): 
+        acc = 0.1 + ((epoch/20) +  (random.random()/10))
+        loss = 0.25 + (1 - ((epoch-1)/10 +  random.random()/6))
+        return acc, loss
+
+    def main():
+        run = wandb.init()
+
+        # note that we define values from `wandb.config` instead 
+        # of defining hard values
+        lr  =  wandb.config.lr
+        bs = wandb.config.batch_size
+        epochs = wandb.config.epochs
+
+        for epoch in np.arange(1, epochs):
+            train_acc, train_loss = train_one_epoch(epoch, lr, bs)
+            val_acc, val_loss = evaluate_one_epoch(epoch)
+
+        wandb.log({
+            'epoch': epoch, 
+            'train_acc': train_acc,
+            'train_loss': train_loss, 
+            'val_acc': val_acc, 
+            'val_loss': val_loss
+        })
+
+    # Start sweep job.
+    wandb.agent(sweep_id, function=main, count=4)
 
 def wandbapi_load_run(run_path):
     api = wandb.Api()
@@ -123,6 +183,7 @@ def main():
     # wandb_objects = make_PCK_plot_objects(PCK,thresholds)
 
     # log_wandb_summary(wandb_objects,run)
+    print()
 
 
 def load_model(load_path):

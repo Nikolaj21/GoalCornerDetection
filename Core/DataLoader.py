@@ -261,17 +261,6 @@ class GoalCalibrationDataset4boxes(Dataset):
         imH,imW = img_original.shape[:2]
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
         keypoints, keypoints_ua = add_visibility_flag(keypoints,keypoints_ua,imH,imW)
-        # for kpt in keypoints:
-        #     if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
-        #         kpt.append(0)
-        #     else:
-        #         kpt.append(1)
-        # # change format for ua keypoints
-        # for kpt in keypoints_ua:
-        #     if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
-        #         kpt.append(0)
-        #     else:
-        #         kpt.append(1)
 
         # convert image to tensor
         img_tensor = F.to_tensor(img)
@@ -346,6 +335,7 @@ def train_transform():
     '''
     Makes data augmentation transformations
     '''
+    # A.Resize(780,1052) # potential future augmentation for testing performance on smaller images
     return A.Compose(
         [A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, brightness_by_max=True, p=0.5),
         A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),

@@ -44,7 +44,7 @@ def to_torch(nparray):
         print('could not convert to torch tensor. Check type of input')
         return nparray
 
-def split_data_train_test(DatasetClass_train, DatasetClass_val, validation_split=0.25, batch_size=1, data_amount=1, num_workers=0, shuffle_dataset=False, shuffle_dataset_seed=-1, shuffle_epoch=False, shuffle_epoch_seed=-1, pin_memory=False, collate_fn=collate_fn):
+def split_data_train_test(DatasetClass_train, DatasetClass_val, validation_split=0.25, batch_size=1, data_amount=1, num_workers=0, shuffle_dataset:bool=False, shuffle_dataset_seed:int=-1, shuffle_epoch:bool=False, shuffle_epoch_seed:int=-1, pin_memory=False, collate_fn=collate_fn):
     '''
     Function that splits data from dataset class into a train and validation set
 
@@ -197,7 +197,7 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     N_ims = len(data_loader.dataset.indices)
     total_keypoints = {'all':N_ims*4, 'TL':N_ims, 'TR':N_ims, 'BL':N_ims, 'BR':N_ims}
     PCK = {
-        key:{threshold: np.count_nonzero([error < threshold for _,_,error in errors]) / total_keypoints[key] for threshold in thresholds}
+        key:{threshold: np.count_nonzero([error < threshold for _,_,error in errors if error is not None]) / total_keypoints[key] for threshold in thresholds}
         for key,errors in pixelerrors.items()
         }
 
@@ -205,3 +205,35 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f'Total time: {total_time_str} ({total_time/len(thresholds):.4f} s / threshold)')
     return PCK,pixelerrors
+
+def PCK_auc(PCK, thresholds):
+    '''
+    Calcuate area-under-curve for the pck curve of every corner / category
+    Returns: a dict containing the same keys in the PCK dict and the single value of the auc for every category
+    '''
+    return {key:scaled_auc(thresholds,list(pck.values())) for key,pck in PCK.items()}
+
+def scaled_auc(x,y):
+    '''
+    Function for calculating the area-under-the-curve of two arrays, such that the output is scaled between the minimum and maximum values of the y array
+    x: np.array of values
+    y: np.array of values
+    '''
+    from sklearn import metrics
+    return metrics.auc(x,y) / (len(x)-1)
+
+def MSE_loss_corners(pixelerrors):
+    print('Finding MSE loss for all corners...')
+    MSE = {}
+    for key,metrics_og in pixelerrors.items():
+        metrics = [metric for metric in metrics_og if metric[2] is not None]
+        if len(metrics) > 0:
+            _,_,errors = zip(*metrics)
+            errors = np.array(errors)
+            MSE[key] = np.mean(errors**2)
+        else:
+            print(f'category: {key} did not have any elements, skipping...')
+            MSE[key] = None
+            continue
+    print('DONE')
+    return MSE
