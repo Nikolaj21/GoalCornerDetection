@@ -137,3 +137,42 @@ def evaluate(model, data_loader, device):
     coco_evaluator.summarize()
     torch.set_num_threads(n_threads)
     return coco_evaluator
+
+
+def validate_epoch(model, dataloader, device, epoch, print_freq):
+    '''
+    Run validation of all images and print losses
+    '''
+###################### loop for validating
+    metric_logger_val = utils.MetricLogger(delimiter="  ")
+    header = f"Epoch: [{epoch}]"
+
+    print(f'Running validation loop!')
+    # Compute the validation loss
+    batchnr = 0
+    steps_per_epoch = len(dataloader)
+    for images, targets in metric_logger_val.log_every(dataloader, print_freq, header):
+        # move images and targets to device
+        images = list(image.to(device) for image in images)
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+        with torch.no_grad():
+            # Forward pass
+            loss_dict = model(images, targets)
+        # reduce losses over all GPUs for logging purposes
+        loss_dict_reduced = utils.reduce_dict(loss_dict)
+        losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+
+        # log metrics to wandb dashboard
+        metrics_val = {"validation/loss": losses_reduced,
+                        "validation/loss_classifier":loss_dict_reduced['loss_classifier'],
+                        "validation/loss_box_reg":loss_dict_reduced['loss_box_reg'],
+                        "validation/loss_keypoint":loss_dict_reduced['loss_keypoint'],
+                        "validation/loss_objectness":loss_dict_reduced['loss_objectness'],
+                        "validation/loss_rpn_box_reg":loss_dict_reduced['loss_rpn_box_reg'],
+                        "validation/step": steps_per_epoch*epoch+batchnr}
+        wandb.log(metrics_val)
+        batchnr += 1
+
+        metric_logger_val.update(loss=losses_reduced, **loss_dict_reduced)
+        torch.cuda.empty_cache()
+    return metric_logger_val

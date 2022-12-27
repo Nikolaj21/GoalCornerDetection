@@ -125,6 +125,7 @@ class GoalCalibrationDatasetOLD(Dataset):
 ############################################################
 ############################################################
 ## data loader for the newly annotated dataset (with option of data augmentation)
+# FIXME Remember to add ua annotations to this dataloader as well
 class GoalCalibrationDataset(Dataset):
     def __init__(self,datapath, transforms=None, filter_data=True):
         self.num_objectclasses_per_image = 1
@@ -171,10 +172,13 @@ class GoalCalibrationDataset(Dataset):
         else:
             img, bboxes, keypoints = img_original, bboxes_original, keypoints_original 
 
+        # # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
+        # for kpt in keypoints:
+        #     kpt.append(1)
+        imH,imW = img_original.shape[:2]
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
-        for kpt in keypoints:
-            kpt.append(1)
-
+        keypoints, keypoints_ua = add_visibility_flag(keypoints,keypoints_ua,imH,imW)
+        
         # convert image to tensor of shape C,H,W
         img_tensor = F.to_tensor(img)
         # convert keypoints to tensor
@@ -236,7 +240,7 @@ class GoalCalibrationDataset4boxes(Dataset):
         userannotation_json = json.load(open(userannotation_path,'r',encoding='latin'))
         keypoints_ua_original = userannotation_json['GoalCalibrationPoints']
         # make bounding boxes
-        bboxes_original = make_gt_boxes(img_original, keypoints_original, expand_x=0.05, expand_y=0.05)
+        bboxes_original = make_gt_boxes(img_original, keypoints_original, expand_x=0.15, expand_y=0.15)
 
         if self.transforms:
             # Each object is a corner of the goal
@@ -257,17 +261,7 @@ class GoalCalibrationDataset4boxes(Dataset):
             
         imH,imW = img_original.shape[:2]
         # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
-        for kpt in keypoints:
-            if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
-                kpt.append(0)
-            else:
-                kpt.append(1)
-        # change format for ua keypoints
-        for kpt in keypoints_ua:
-            if not (0 <= kpt[0] <= imW and 0 <= kpt[1] <= imH):
-                kpt.append(0)
-            else:
-                kpt.append(1)
+        keypoints, keypoints_ua = add_visibility_flag(keypoints,keypoints_ua,imH,imW)
 
         # convert image to tensor
         img_tensor = F.to_tensor(img)
@@ -342,6 +336,7 @@ def train_transform():
     '''
     Makes data augmentation transformations
     '''
+    # A.Resize(780,1052) # potential future augmentation for testing performance on smaller images
     return A.Compose(
         [A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, brightness_by_max=True, p=0.5),
         A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
@@ -372,6 +367,31 @@ def put_fake_netting(img,netting_im,p=0.5):
         # img[timg > torch.max(timg)/4] = net_int/4
         img[timg > np.max(timg)/4] = net_int/4
     return img
+
+def add_visibility_flag(keypoints,keypoints_ua,H,W):
+    '''
+    Adds the visibility flag to the gt and ua keypoints
+    Args:
+        keypoints: a np.array of gt keypoints with shape (N,K,2)
+        keypoints: a np.array of ua keypoints with shape (N,K,2)
+        H: Height of the image
+        W: Width of the image
+    Returns: the gt and ua keypoints updated with visibility flag, i.e. now with shape (N,K,3)
+    '''
+    # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
+    for kpt in keypoints:
+        if not (0 <= kpt[0] <= W and 0 <= kpt[1] <= H):
+            kpt.append(0)
+        else:
+            kpt.append(1)
+    # change format for ua keypoints
+    for kpt in keypoints_ua:
+        if not (0 <= kpt[0] <= W and 0 <= kpt[1] <= H):
+            kpt.append(0)
+        else:
+            kpt.append(1)
+    return keypoints,keypoints_ua
+
 ############################################################
 ############################################################
 ## data loader for heatmap regression

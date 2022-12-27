@@ -44,7 +44,7 @@ def to_torch(nparray):
         print('could not convert to torch tensor. Check type of input')
         return nparray
 
-def split_data_train_test(DatasetClass_train, DatasetClass_val, validation_split=0.25, batch_size=1, data_amount=1, num_workers=0, shuffle_dataset=False, shuffle_dataset_seed=-1, shuffle_epoch=False, shuffle_epoch_seed=-1, pin_memory=False, collate_fn=collate_fn):
+def split_data_train_test(DatasetClass_train, DatasetClass_val, validation_split=0.25, batch_size=1, data_amount=1, num_workers=0, shuffle_dataset:bool=False, shuffle_dataset_seed:int=-1, shuffle_epoch:bool=False, shuffle_epoch_seed:int=-1, pin_memory=False, collate_fn=collate_fn):
     '''
     Function that splits data from dataset class into a train and validation set
 
@@ -123,6 +123,7 @@ def find_pixelerror(model, data_loader, device, num_objects):
     cpu_device = torch.device("cpu")
     # save pixelerrors as a deque list, which is faster at appending than a normal list
     pixelerrors_all = []
+    model_times = []
     print(f'Finding pixelerror for all predictions...')
     start_time = time.time()
     # Run through all images and get the pixel distance (error) between predictions and ground-truth
@@ -130,9 +131,13 @@ def find_pixelerror(model, data_loader, device, num_objects):
         images = list(image.to(device) for image in images)
         # outputs will be a list of dict of len == batch_size
         with torch.no_grad():
+            model_time_start = time.time()
             outputs = model(images)
+            model_time = time.time() - model_time_start
+        model_times.append(model_time)
         # move outputs to cpu
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+
         # extract the euclidean distance error (in pixels) between every ground-truth and detection keypoint in the batch. Also return image_ids and labels for every distance measure for reference
         for target, output in zip(targets, outputs):
             label_to_gts = {}
@@ -154,6 +159,8 @@ def find_pixelerror(model, data_loader, device, num_objects):
                     # find the distance between every gt and gt for this label, and add to list of distances, along with the image_id
                     for gt,dt in zip(obj_gt,obj_dt):
                         pixelerrors_all.append((target['image_id'].item(), label, np.linalg.norm(dt[:2]-gt[:2])))
+                else: # the label is missing, add an identifier (None) so it is clear that this is a missing corner prediction
+                    pixelerrors_all.append((target['image_id'].item(), label, None))
     if num_objects == 1:
         num_keypoints = 4
         pixelerrors_TL = pixelerrors_all[0::num_keypoints]
@@ -177,6 +184,7 @@ def find_pixelerror(model, data_loader, device, num_objects):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f'Total time: {total_time_str}')
+    print(f'Average model time: {np.mean(model_times)} s\nMedian model time: {np.median(model_times)}')
     return pixelerrors
 
 def eval_PCK(model, data_loader, device, thresholds, num_objects):
@@ -194,7 +202,7 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     N_ims = len(data_loader.dataset.indices)
     total_keypoints = {'all':N_ims*4, 'TL':N_ims, 'TR':N_ims, 'BL':N_ims, 'BR':N_ims}
     PCK = {
-        key:{threshold: np.count_nonzero([error < threshold for _,_,error in errors]) / total_keypoints[key] for threshold in thresholds}
+        key:{threshold: np.count_nonzero([error < threshold for _,_,error in errors if error is not None]) / total_keypoints[key] for threshold in thresholds}
         for key,errors in pixelerrors.items()
         }
 
@@ -202,3 +210,51 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f'Total time: {total_time_str} ({total_time/len(thresholds):.4f} s / threshold)')
     return PCK,pixelerrors
+
+def PCK_auc(PCK, thresholds):
+    '''
+    Calcuate area-under-curve for the pck curve of every corner / category
+    Returns: a dict containing the same keys in the PCK dict and the single value of the auc for every category
+    '''
+    return {key:scaled_auc(thresholds,list(pck.values())) for key,pck in PCK.items()}
+
+def scaled_auc(x,y):
+    '''
+    Function for calculating the area-under-the-curve of two arrays, such that the output is scaled between the minimum and maximum values of the y array
+    x: np.array of values
+    y: np.array of values
+    '''
+    from sklearn import metrics
+    return metrics.auc(x,y) / (len(x)-1)
+
+def MSE_loss_corners(pixelerrors):
+    print('Finding MSE loss for all corners...')
+    MSE = {}
+    for key,metrics_og in pixelerrors.items():
+        metrics = [metric for metric in metrics_og if metric[2] is not None]
+        if len(metrics) > 0:
+            _,_,errors = zip(*metrics)
+            errors = np.array(errors)
+            MSE[key] = np.mean(errors**2)
+        else:
+            print(f'category: {key} did not have any elements, skipping...')
+            MSE[key] = None
+            continue
+    print('DONE')
+    return MSE
+
+def get_model_time(model, data_loader, device):
+    model.eval()
+    model.to(device)
+    model_times = []
+    for images,_ in data_loader:
+        images = list(image.to(device) for image in images)
+        with torch.no_grad():
+            model_time_start = time.time()
+            outputs = model(images)
+            model_time = time.time() - model_time_start
+        model_times.append(model_time)
+    mean_time = np.mean(model_times)
+    median_time = np.median(model_times)
+    print(f'Average model time: {mean_time} s\nMedian model time: {median_time}')
+    return mean_time,median_time

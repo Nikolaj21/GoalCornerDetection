@@ -174,10 +174,66 @@ def test_paths():
     img_list = sorted(glob.glob(glob_path))
     print(f'img_list items:\n{img_list[:3]}')
 
+from utils import DATA_DIR
+class Params:
+    def defaultparams(self):
+        self.data_dir = DATA_DIR
+        self.batch_size = 4
+        self.validation_split = 0.25
+        self.epochs = 5
+        self.workers = 6
+        self.opt = "adam"
+        self.lr = 0.001
+        self.momentum = 0.9
+        self.weight_decay = 0.0005
+        self.print_freq = 100
+        self.output_dir = "/zhome/60/1/118435/Master_Thesis/Scratch/s163848/Runs/"
+        self.project_name = "GoalCornerDetection"
+        self.model_name = "tester_model"
+        self.pckthreshup = 200
+        self.predims_every = 5
+        self.data_amount = 1
+        self.shuffle_dataset = "True"
+        self.shuffle_epoch = "False"
+        self.shuffle_dataset_seed = -1
+        self.shuffle_epoch_seed = -1
+        self.model_type = "4box"
+        self.filter_data = "True"
+
+        self.test_only = False
+        self.load_path = None
+        self.data_aug = False
+
+
+    def setself(self, params):
+        for name,val in params.items():
+            self.__dict__[name] = val
+    def __init__(self):
+        self.defaultparams()
+
+params = Params()
+
+def test_wandb_init(args=None):
+    import wandb
+    import argparse
+    from distutils.util import strtobool
+    wandb.init(config=None)
+    wandb.config.epochs = 4
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-b', '--batch-size', type=int, default=8, metavar='N',
+                        help='input batch size for training (default: 8)')
+    parser.add_argument("--filter-data", default='True', type=bool(strtobool), nargs='?', const=False, help="Shuffle which data ends up in train set and validation set. Default: True")
+
+    args = parser.parse_args()
+    wandb.config.update(args) # adds all of the arguments as config variables
+    print(wandb.config)
+
 def main():
     # testPCK()
     # test_dataloader_speed()
-    test_paths()
+    # test_paths()
+    test_wandb_init()
 
 if __name__ == "__main__":
     main()
