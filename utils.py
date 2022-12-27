@@ -6,5 +6,5 @@ DATA_DIR = os.path.join(ROOT_DIR,'Data')
 
 
 def export_wandb_api():
-    os.environ['WAND_API_KEY'] = "fd61955568b424c577dffeebaec0f1a50f1d73be"
+    os.environ['WANDB_API_KEY'] = "fd61955568b424c577dffeebaec0f1a50f1d73be"
     return print("# Wandb api key successfully exported to environment #")

@@ -13,7 +13,7 @@ from torchvision.models.detection import keypointrcnn_resnet50_fpn
 # https://github.com/pytorch/vision/tree/main/references/detection
 from Core.torchhelpers.utils import MetricLogger
 from Core.torchhelpers.utils import reduce_dict
-from Core.torchhelpers.engine import train_one_epoch, evaluate
+from Core.torchhelpers.engine import train_one_epoch, evaluate, validate_epoch
 from torchvision.models.detection.rpn import AnchorGenerator
 import json
 import wandb
@@ -22,43 +22,6 @@ import time
 from pathlib import Path
 from distutils.util import strtobool
 
-def validate_epoch(model, dataloader, device, epoch, print_freq):
-    '''
-    Run validation of all images and print losses
-    '''
-###################### loop for validating
-    metric_logger_val = MetricLogger(delimiter="  ")
-    header = f"Epoch: [{epoch}]"
-
-    print(f'Running validation loop!')
-    # Compute the validation loss
-    batchnr = 0
-    steps_per_epoch = len(dataloader)
-    for images, targets in metric_logger_val.log_every(dataloader, print_freq, header):
-        # move images and targets to device
-        images = list(image.to(device) for image in images)
-        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-        with torch.no_grad():
-            # Forward pass
-            loss_dict = model(images, targets)
-        # reduce losses over all GPUs for logging purposes
-        loss_dict_reduced = reduce_dict(loss_dict)
-        losses_reduced = sum(loss for loss in loss_dict_reduced.values())
-
-        # log metrics to wandb dashboard
-        metrics_val = {"validation/loss": losses_reduced,
-                        "validation/loss_classifier":loss_dict_reduced['loss_classifier'],
-                        "validation/loss_box_reg":loss_dict_reduced['loss_box_reg'],
-                        "validation/loss_keypoint":loss_dict_reduced['loss_keypoint'],
-                        "validation/loss_objectness":loss_dict_reduced['loss_objectness'],
-                        "validation/loss_rpn_box_reg":loss_dict_reduced['loss_rpn_box_reg'],
-                        "validation/step": steps_per_epoch*epoch+batchnr}
-        wandb.log(metrics_val)
-        batchnr += 1
-
-        metric_logger_val.update(loss=losses_reduced, **loss_dict_reduced)
-        # torch.cuda.empty_cache()
-    return metric_logger_val
 
 def save_model(save_folder, model, loss_dict, type):
     '''
@@ -124,6 +87,8 @@ class Params:
         self.model_type = "4box"
         self.filter_data = 'True'
         self.wandb_dir = '/zhome/60/1/118435/Master_Thesis/Scratch/s163848/'
+        self.bbox_expand_x = 0.05
+        self.bbox_expand_y = 0.05
 
         self.test_only = False
         self.load_path = "No path"
@@ -165,7 +130,8 @@ def get_args_parser(add_help=True):
     parser.add_argument("--model_type", default=params.model_type, choices=('1boxOLD','1box','4box'), help="Changes which type of model is run. Affects which dataloader is called and some parameters of the model. Default: 4box")
     parser.add_argument("--filter_data", default=params.filter_data, choices=('True','False'), help="Shuffle which data ends up in train set and validation set. Default: True")
     parser.add_argument("--wandb_dir", default=params.wandb_dir, type=str, help="Directory in which to make wandb folder for storing data from runs.")
-
+    parser.add_argument("--bbox_expand_x", default=params.bbox_expand_x, type=float, help="relative width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
+    parser.add_argument("--bbox_expand_y", default=params.bbox_expand_y, type=float, help="relative height (y) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
 
     parser.add_argument("--test_only", dest="test_only", action="store_true", help="If option is set, the script will only test the model")
     parser.add_argument("--load_path", default=params.load_path, type=str, help="path to load model checkpoint from. Must be present if --test-only is used")
@@ -181,13 +147,10 @@ def main(config=params):
     print('RUNNING MAIN :) #################################################################################\n')
     print(f'filter_data1: {config.filter_data}, type: {type(config.filter_data)}')
     # convert these arguments from strings to boolean
-    #FIXME Must do something about these args, and their types
     config.shuffle_dataset = bool(strtobool(config.shuffle_dataset))
     config.shuffle_epoch = bool(strtobool(config.shuffle_epoch))
     config.filter_data = bool(strtobool(config.filter_data))
-    # config.shuffle_dataset = True if config.shuffle_dataset=='True' else False
-    # config.shuffle_epoch = True if config.shuffle_epoch=='True' else False
-    # config.filter_data = True if config.filter_data=='True' else False
+
     print(f'filter_data2: {config.filter_data}, type: {type(config.filter_data)}')
 
     # set wandb api key as environment variable
@@ -386,22 +349,6 @@ def main(config=params):
             "epoch_metrics/loss_total_val_keypoint": metric_logger_val.meters['loss_keypoint'].total,
             "epoch": epoch
             }
-         # log epoch metrics to wandb dashboard
-        # metrics_epoch = {
-        #     "epoch_metrics/loss_avg": {
-        #         "train_all":metric_logger.meters['loss'].global_avg,
-        #         "val_all":metric_logger_val.meters['loss'].global_avg,
-        #         "train_keypoint":loss_epoch_val_keypoint,
-        #         "val_keypoint":metric_logger_val.meters['loss_keypoint'].global_avg
-        #     },
-        #     "epoch_metrics/loss_total": {
-        #         "train_all":metric_logger.meters['loss'].total,
-        #         "val_all":metric_logger_val.meters['loss'].total,
-        #         "train_keypoint":metric_logger.meters['loss_keypoint'].total,
-        #         "val_keypoint":metric_logger_val.meters['loss_keypoint'].total
-
-        #     },
-        #     "epoch": epoch}
         wandb.log(metrics_epoch)
 
         # save current best model (save if loss is lower than before)
@@ -500,15 +447,16 @@ def test(args=None):
 
 if __name__ == '__main__':
     args = get_args_parser().parse_args()
+    main(args)
 
-    if args.sweep:
-        import yaml
-        with open('./sweep.yaml','r') as file:
-            sweep_config = yaml.load(file,Loader=yaml.FullLoader)
-        sweep_id = wandb.sweep(sweep=sweep_config)
+    # if args.sweep:
+    #     import yaml
+    #     with open('./sweep.yaml','r') as file:
+    #         sweep_config = yaml.load(file,Loader=yaml.FullLoader)
+    #     sweep_id = wandb.sweep(sweep=sweep_config)
         
-        wandb.agent(sweep_id, function=main, count=3)
+    #     wandb.agent(sweep_id, function=main, count=3)
 
-    else:
-        main(args)
+    # else:
+        # main(args)
         # test(args)

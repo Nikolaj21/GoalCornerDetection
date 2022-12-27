@@ -125,6 +125,7 @@ class GoalCalibrationDatasetOLD(Dataset):
 ############################################################
 ############################################################
 ## data loader for the newly annotated dataset (with option of data augmentation)
+# FIXME Remember to add ua annotations to this dataloader as well
 class GoalCalibrationDataset(Dataset):
     def __init__(self,datapath, transforms=None, filter_data=True):
         self.num_objectclasses_per_image = 1
@@ -239,7 +240,7 @@ class GoalCalibrationDataset4boxes(Dataset):
         userannotation_json = json.load(open(userannotation_path,'r',encoding='latin'))
         keypoints_ua_original = userannotation_json['GoalCalibrationPoints']
         # make bounding boxes
-        bboxes_original = make_gt_boxes(img_original, keypoints_original, expand_x=0.05, expand_y=0.05)
+        bboxes_original = make_gt_boxes(img_original, keypoints_original, expand_x=0.15, expand_y=0.15)
 
         if self.transforms:
             # Each object is a corner of the goal

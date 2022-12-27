@@ -123,6 +123,7 @@ def find_pixelerror(model, data_loader, device, num_objects):
     cpu_device = torch.device("cpu")
     # save pixelerrors as a deque list, which is faster at appending than a normal list
     pixelerrors_all = []
+    model_times = []
     print(f'Finding pixelerror for all predictions...')
     start_time = time.time()
     # Run through all images and get the pixel distance (error) between predictions and ground-truth
@@ -130,9 +131,13 @@ def find_pixelerror(model, data_loader, device, num_objects):
         images = list(image.to(device) for image in images)
         # outputs will be a list of dict of len == batch_size
         with torch.no_grad():
+            model_time_start = time.time()
             outputs = model(images)
+            model_time = time.time() - model_time_start
+        model_times.append(model_time)
         # move outputs to cpu
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+
         # extract the euclidean distance error (in pixels) between every ground-truth and detection keypoint in the batch. Also return image_ids and labels for every distance measure for reference
         for target, output in zip(targets, outputs):
             label_to_gts = {}
@@ -179,6 +184,7 @@ def find_pixelerror(model, data_loader, device, num_objects):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f'Total time: {total_time_str}')
+    print(f'Average model time: {np.mean(model_times)} s\nMedian model time: {np.median(model_times)}')
     return pixelerrors
 
 def eval_PCK(model, data_loader, device, thresholds, num_objects):
@@ -237,3 +243,19 @@ def MSE_loss_corners(pixelerrors):
             continue
     print('DONE')
     return MSE
+
+def get_model_time(model, data_loader, device):
+    model.eval()
+    model.to(device)
+    model_times = []
+    for images,_ in data_loader:
+        images = list(image.to(device) for image in images)
+        with torch.no_grad():
+            model_time_start = time.time()
+            outputs = model(images)
+            model_time = time.time() - model_time_start
+        model_times.append(model_time)
+    mean_time = np.mean(model_times)
+    median_time = np.median(model_times)
+    print(f'Average model time: {mean_time} s\nMedian model time: {median_time}')
+    return mean_time,median_time
