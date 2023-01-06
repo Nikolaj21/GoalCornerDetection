@@ -11,7 +11,6 @@ def target_to_keypoints(target_dict):
     return target_dict['keypoints'][0,:,:2]
 
 def batch_target_to_keypoints(batch_targets):
-
     batch_keypoints = []
     for target_dict in batch_targets:
         keypoints = target_dict['keypoints']
@@ -19,7 +18,7 @@ def batch_target_to_keypoints(batch_targets):
             batch_keypoints.append(kps[:,:2])
     return batch_keypoints
     
-# # plot images and corresponding keypoints for a subset of the batch
+# plot images and corresponding keypoints for a subset of the batch
 def plot_batch_keypoints(batch,figsize=(10,10), show_qualityfactor=False):
     # imgs and targets is a list of tensors and list of dicts, respectively
     imgs,targets = batch
@@ -325,7 +324,7 @@ def visualize_images(images,figtitle=None,subplottitles=None,figsize=(20,20), sh
     plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n)))
     if subplottitles is None:
         subplottitles = [None for _ in range(n)]
-    fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=figsize, layout="constrained")
+    fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=figsize, sharex=True, gridspec_kw=dict(hspace=0.05,wspace=0.05)) #layout="constrained",
     fig.suptitle(figtitle)
     if plotdim == (1,1):
         for image in images:

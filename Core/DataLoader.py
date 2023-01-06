@@ -125,27 +125,29 @@ class GoalCalibrationDatasetOLD(Dataset):
 ############################################################
 ############################################################
 ## data loader for the newly annotated dataset (with option of data augmentation)
-# FIXME Remember to add ua annotations to this dataloader as well
+# FIXME Remember to add ua annotations to this dataloader as well.
 class GoalCalibrationDataset(Dataset):
-    def __init__(self,datapath, transforms=None, filter_data=True):
+    def __init__(self,datapath, transforms=None, filter_data=True, config=None):
         self.num_objectclasses_per_image = 1
         self.num_keypoints_per_object = 4
         self.img_list = sorted(glob.glob(str(Path(datapath + '/*/*.jpg'))))
         self.annotation_list = sorted(glob.glob(str(Path(datapath + '/FootballGoalCorners/AnnotationFiles/*.json'))))
+        # list of paths to the user annotations data
+        self.userannotation_list = sorted(glob.glob(str(Path(datapath + '/*/*.txt'))))
         ### remove image paths from list if they aren't of category 'free kick'
         if filter_data:
-            self.img_list_filtered, self.annotation_list_filtered, self.old_idxs = filter_data_lists(self.img_list,self.annotation_list)
+            self.img_list_filtered, self.annotation_list_filtered, self.userannotation_list_filtered, self.old_idxs = filter_data_lists(self.img_list,self.annotation_list,self.userannotation_list)
         else:
-            self.img_list_filtered, self.annotation_list_filtered, self.old_idxs = self.img_list, self.annotation_list, [i for i in range(len(self.img_list))]
+            self.img_list_filtered, self.annotation_list_filtered, self.userannotation_list_filtered, self.old_idxs = self.img_list, self.annotation_list, self.userannotation_list, [i for i in range(len(self.img_list))]
         self.transforms = transforms
         
-
     def  __len__(self):
         return len(self.annotation_list_filtered)
 
     def __getitem__(self, idx):
         img_path = self.img_list_filtered[idx]
         annotation_path = self.annotation_list_filtered[idx]
+        userannotation_path = self.userannotation_list_filtered[idx]
 
         # cv2 loads image in shape H,W,C
         img_original = cv2.imread(img_path)
@@ -158,19 +160,28 @@ class GoalCalibrationDataset(Dataset):
         Cu,Cv,w,h = box_json['CenterU'], box_json['CenterV'], box_json['Width'], box_json['Height']
         bboxes_original = [[(2*Cu-w)/2, (2*Cv-h)/2, w+(2*Cu-w)/2, h+(2*Cv-h)/2]]
         radii = torch.tensor([corner['Radius'] for corner in annotation_json['Annotations']['0'][:4]])
+        # load keypoint user annotations (and other relevant metrics)
+        userannotation_json = json.load(open(userannotation_path,'r',encoding='latin'))
+        keypoints_ua_original = userannotation_json['GoalCalibrationPoints']
 
         # All objects are goal
         bboxes_labels_original = ['goal' for _ in bboxes_original]
 
         if self.transforms:
+            # concatenate gt and ua keypoints to do transformations
+            keypoints_original_combined = np.concatenate((keypoints_original,keypoints_ua_original))
             # Apply augmentations
-            transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original)
+            transformed = self.transforms(image=img_original, bboxes=bboxes_original, bboxes_labels=bboxes_labels_original, keypoints=keypoints_original_combined)
             img = transformed['image']
+            # add fake netting augmentation to image with probability p
+            img = put_fake_netting(img,self.netting_im,p=0.25)
             bboxes = transformed['bboxes']
-            keypoints = np.array(transformed['keypoints']).tolist()
+            keypoints_combined = np.array(transformed['keypoints']).tolist()
+            keypoints = keypoints_combined[:4]
+            keypoints_ua = keypoints_combined[4:]
     
         else:
-            img, bboxes, keypoints = img_original, bboxes_original, keypoints_original 
+            img, bboxes, keypoints, keypoints_ua = img_original, bboxes_original, keypoints_original, keypoints_ua_original
 
         # # change format of keypoints from [x,y] -> [x,y,visibility] where visibility=0 means the keypoint is not visible
         # for kpt in keypoints:
@@ -185,6 +196,8 @@ class GoalCalibrationDataset(Dataset):
         keypoints_tensor = torch.tensor(keypoints, dtype=torch.float32)
         # convert bboxes to tensor
         bboxes_tensor = torch.tensor(bboxes, dtype=torch.float32)
+        # convert ua keypoints to tensor
+        keypoints_ua_tensor = torch.tensor(keypoints_ua, dtype=torch.float32)
 
         target_dict = {
             'boxes': bboxes_tensor,
@@ -194,7 +207,8 @@ class GoalCalibrationDataset(Dataset):
             'radii': radii,
             'area': (bboxes_tensor[:, 3] - bboxes_tensor[:, 1]) * (bboxes_tensor[:, 2] - bboxes_tensor[:, 0]),
             'iscrowd': torch.zeros(len(bboxes), dtype=torch.int64),
-            'old_image_id': torch.tensor((self.old_idxs[idx]))
+            'old_image_id': torch.tensor((self.old_idxs[idx])),
+            'keypoints_ua': keypoints_ua_tensor[:,None,:]
         }
 
         return img_tensor,target_dict
@@ -203,7 +217,7 @@ class GoalCalibrationDataset(Dataset):
 ############################################################
 ## data loader for making a bounding box around every corner
 class GoalCalibrationDataset4boxes(Dataset):
-    def __init__(self,datapath, transforms=None, filter_data=True):
+    def __init__(self,datapath, transforms=None, filter_data=True, config=None):
         self.num_objectclasses_per_image = 4
         self.num_keypoints_per_object = 1
         self.img_list = sorted(glob.glob(str(Path(datapath + '/*/*.jpg'))))
@@ -219,6 +233,13 @@ class GoalCalibrationDataset4boxes(Dataset):
         # load the net noise image and resize to image size
         noise_pat = cv2.imread(str(Path(datapath + '/mesh_netting.png')))
         self.netting_im = np.invert(noise_pat)
+        if config is not None:
+            self.bbox_expand_x = config.bbox_expand
+            self.bbox_expand_y = config.bbox_expand
+        else:
+            print('Config not given, using default values for bbox_expand.')
+            self.bbox_expand_x = 0.05
+            self.bbox_expand_y = 0.05
 
     def  __len__(self):
         return len(self.annotation_list_filtered)
@@ -236,11 +257,11 @@ class GoalCalibrationDataset4boxes(Dataset):
         annotation_json = json.load(open(annotation_path,'r',encoding='latin'))
         keypoints_original = [[corner['CenterU'],corner['CenterV']] for corner in annotation_json['Annotations']['0'][:4]]
         radii = torch.tensor([corner['Radius'] for corner in annotation_json['Annotations']['0'][:4]])
-        # load keypoint annotations (and other relevant metrics)
+        # load keypoint user annotations (and other relevant metrics)
         userannotation_json = json.load(open(userannotation_path,'r',encoding='latin'))
         keypoints_ua_original = userannotation_json['GoalCalibrationPoints']
         # make bounding boxes
-        bboxes_original = make_gt_boxes(img_original, keypoints_original, expand_x=0.15, expand_y=0.15)
+        bboxes_original = make_gt_boxes(img_original, keypoints_original, expand_x=self.bbox_expand_x, expand_y=self.bbox_expand_y)
 
         if self.transforms:
             # Each object is a corner of the goal

@@ -50,19 +50,6 @@ def save_model(save_folder, model, loss_dict, type):
     return
 
 class Params:
-    # def setparams(
-    #     self,
-    #     im_score_thresh,
-    #     nms_iou_thresh,
-    #     plot_kp_opaqueness,
-    #     bbox_expand_x,
-    #     bbox_expand_y):
-
-    #     self.im_score_thresh = im_score_thresh
-    #     self.nms_iou_thresh = nms_iou_thresh
-    #     self.plot_kp_opaqueness = plot_kp_opaqueness
-    #     self.bbox_expand_x = bbox_expand_x
-    #     self.bbox_expand_y = bbox_expand_y
     def defaultparams(self):
         self.data_dir = DATA_DIR
         self.batch_size = 4
@@ -216,11 +203,11 @@ def main(config=params):
 
     # initialize an instance of the dataloader class, one for train and one for validation
     if args.data_aug:
-        GoalData_train = DataClass(args.data_dir, transforms=train_transform(), filter_data=args.filter_data)
+        GoalData_train = DataClass(args.data_dir, transforms=train_transform(), filter_data=args.filter_data, config=args)
     else:
-        GoalData_train = DataClass(args.data_dir, transforms=None, filter_data=args.filter_data)
+        GoalData_train = DataClass(args.data_dir, transforms=None, filter_data=args.filter_data, config=args)
 
-    GoalData_val = DataClass(args.data_dir, transforms=None, filter_data=args.filter_data)
+    GoalData_val = DataClass(args.data_dir, transforms=None, filter_data=args.filter_data, config=args)
 
     num_objects = GoalData_val.num_objectclasses_per_image # number of object classes in this model
     num_keypoints = GoalData_val.num_keypoints_per_object # number of keypoints to predict per object
@@ -244,15 +231,15 @@ def main(config=params):
     # the different sizes to use for the anchor boxes
     anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
     # list of possible aspect_ratios to use, due to different models being trained on different number of aspect_ratios
-    aspect_ratios_all = (1.0, 4208/3120, 2.0, 2.5, 3.0, 0.5, 4.0)
+    aspect_ratios_all = (4208/3120, 1.0, 2.0, 2.5, 3.0, 0.5, 4.0)
     if args.test_only:
         # finds the number of aspect ratios used from the state_dict if loading a previously trained model
         state_dict = torch.load(args.load_path)
         number_aspect_ratios = len(state_dict.get('rpn.head.cls_logits.bias'))
         aspect_ratios_anchors = (aspect_ratios_all[:number_aspect_ratios], ) * len(anchor_sizes)
-    else: # make an anchor generator with 3 aspect_ratios
+    else: # make an anchor generator with 3 aspect_ratios (1 for now)
         # which aspect ratios to use for every anchor size. Assumes aspect_ratio = height / width
-        aspect_ratios_anchors = (aspect_ratios_all[:3], ) * len(anchor_sizes)
+        aspect_ratios_anchors = (aspect_ratios_all[:1], ) * len(anchor_sizes)
     anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
     model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator)
     model.to(device)
@@ -401,6 +388,8 @@ def main(config=params):
     # Find the outliers in predictions and log them
     outliertable = prediction_outliers(pixelerrors, model, validation_loader, num_objects, device)
     wandb.log({"outliers_table": outliertable})
+    # log mean error for sweep purpose
+    wandb.log({"mean_error_all": outliertable.get_column("mean",convert_to="numpy")[0]})
 
     wandb.finish()
     return
