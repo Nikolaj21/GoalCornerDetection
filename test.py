@@ -229,11 +229,60 @@ def test_wandb_init(args=None):
     wandb.config.update(args) # adds all of the arguments as config variables
     print(wandb.config)
 
+def test_model_time():
+    import torch
+    import sys
+    # sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
+    # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cpu')
+    from Core.DataLoader import GoalCalibrationDataset4boxes
+    from torchvision.models.detection.rpn import AnchorGenerator
+    from Core.helpers import split_data_train_test, get_model_time
+    from utils import DATA_DIR
+    from Models.modelzoo import loadmymodel
+    from pathlib import Path
+    import numpy as np
+    from Core.helpers import eval_PCK, MSE_loss_corners
+    anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
+    aspect_ratios = ((1.0, 4208/3120, 2.0),) * len(anchor_sizes)
+    anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios)
+    load_path = "C:\\Users\\Nikolaj\\OneDrive - Danmarks Tekniske Universitet\\DTU\\Kandidat\\MasterThesis\\Code\Runs\\4box_2_fakenet2_50epochs\\weights-best.pth"
+    model = loadmymodel(device,anchor_generator,load_path=load_path,num_keypoints=1, num_classes=5,rpn_pre_nms_top_n_test=100,rpn_post_nms_top_n_test=100)
+    num_workers = 0
+    print(f'num_workers: {num_workers}')
+    num_objects = 4
+    GoalData = GoalCalibrationDataset4boxes(DATA_DIR)
+
+    train_loader,validation_loader = split_data_train_test(
+                                                            GoalData,
+                                                            GoalData,
+                                                            validation_split=0.25,
+                                                            batch_size=1,
+                                                            data_amount=1,
+                                                            num_workers=num_workers,
+                                                            shuffle_dataset=True,
+                                                            shuffle_dataset_seed=20,
+                                                            shuffle_epoch = False,
+                                                            shuffle_epoch_seed=-1,
+                                                            pin_memory=False)
+                                        
+    get_model_time(model,validation_loader,device)
+
+    # Evaluate PCK for all the keypoints
+    thresholds=np.arange(1,200+1)
+    PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds, num_objects=num_objects)
+    print(f'PCKall@5: {PCK["all"][5]}\nPCKall@10: {PCK["all"][10]}\nPCKall@15: {PCK["all"][50]}\nPCKall@20: {PCK["all"][20]}')
+    # caclulate MSE of predictions and log
+    mse_dict = MSE_loss_corners(pixelerrors)
+    for cat,mse in mse_dict.items():
+        print(f'MSE_loss_{cat}: {mse}')
+
 def main():
     # testPCK()
     # test_dataloader_speed()
     # test_paths()
-    test_wandb_init()
+    # test_wandb_init()
+    test_model_time()
 
 if __name__ == "__main__":
     main()
