@@ -233,11 +233,11 @@ def test_model_time():
     import torch
     import sys
     # sys.path.append(r'/zhome/60/1/118435/Master_Thesis/GoalCornerDetection')
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    # device = torch.device('cpu')
+    # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cpu')
     from Core.DataLoader import GoalCalibrationDataset4boxes
     from torchvision.models.detection.rpn import AnchorGenerator
-    from Core.helpers import split_data_train_test, get_model_time, find_pixelerror
+    from Core.helpers import split_data_train_test, get_model_time
     from utils import DATA_DIR
     from Models.modelzoo import loadmymodel
     from pathlib import Path
@@ -246,14 +246,18 @@ def test_model_time():
     anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
     aspect_ratios = ((1.0, 4208/3120, 2.0),) * len(anchor_sizes)
     anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios)
-    GoalData = GoalCalibrationDataset4boxes(DATA_DIR)
-    num_workers = 6
+    load_path = "C:\\Users\\Nikolaj\\OneDrive - Danmarks Tekniske Universitet\\DTU\\Kandidat\\MasterThesis\\Code\Runs\\4box_2_fakenet2_50epochs\\weights-best.pth"
+    model = loadmymodel(device,anchor_generator,load_path=load_path,num_keypoints=1, num_classes=5,rpn_pre_nms_top_n_test=100,rpn_post_nms_top_n_test=100)
+    num_workers = 0
     print(f'num_workers: {num_workers}')
-    _,validation_loader = split_data_train_test(
+    num_objects = 4
+    GoalData = GoalCalibrationDataset4boxes(DATA_DIR)
+
+    train_loader,validation_loader = split_data_train_test(
                                                             GoalData,
                                                             GoalData,
                                                             validation_split=0.25,
-                                                            batch_size=8,
+                                                            batch_size=1,
                                                             data_amount=1,
                                                             num_workers=num_workers,
                                                             shuffle_dataset=True,
@@ -261,39 +265,17 @@ def test_model_time():
                                                             shuffle_epoch = False,
                                                             shuffle_epoch_seed=-1,
                                                             pin_memory=False)
-
-    load_paths = [
-        "/zhome/60/1/118435/Master_Thesis/Scratch/s163848/Runs/4box_2_fakenet2_50epochs/weights-last.pth",
-        "/zhome/60/1/118435/Master_Thesis/Scratch/s163848/Runs/4box_2_notsmall_50epochs/weights-last.pth",
-        "/zhome/60/1/118435/Master_Thesis/Scratch/s163848/Runs/4box_bigger_50epochs/weights-last.pth",
-        "/zhome/60/1/118435/Master_Thesis/Scratch/s163848/Runs/4box_biggerer_50epochs/weights-last.pth",
-        "/zhome/60/1/118435/Master_Thesis/Scratch/s163848/Runs/4box_2_small_50epochs/weights-last.pth"
-
-    ]
-    for modelpath in load_paths:
-        model_name = modelpath.split("/")[-2]
-        model = loadmymodel(device,anchor_generator,load_path=modelpath,num_keypoints=1, num_classes=5)#,rpn_pre_nms_top_n_test=100,rpn_post_nms_top_n_test=100)
-        
-        num_objects = 4
-        pixelerrors = find_pixelerror(model,validation_loader,device,num_objects)
-        mse_dict = MSE_loss_corners(pixelerrors)
-        print(f'#########################\nModel: {model_name}\n')
-        for cat,mse in mse_dict.items():
-            print(f'MSE_loss_{cat}: {mse}')
-            metrics = [metric for metric in pixelerrors[cat] if metric[2] is not None]
-            if len(metrics) > 0:
-                _,_,errors = zip(*metrics)
-                print(f'mean_error_{cat}: {np.mean(errors)}')
-
                                         
-    # get_model_time(model,validation_loader,device)
+    get_model_time(model,validation_loader,device)
 
-    # # Evaluate PCK for all the keypoints
-    # thresholds=np.arange(1,200+1)
-    # PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds, num_objects=num_objects)
-    # print(f'PCKall@5: {PCK["all"][5]}\nPCKall@10: {PCK["all"][10]}\nPCKall@15: {PCK["all"][50]}\nPCKall@20: {PCK["all"][20]}')
+    # Evaluate PCK for all the keypoints
+    thresholds=np.arange(1,200+1)
+    PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds, num_objects=num_objects)
+    print(f'PCKall@5: {PCK["all"][5]}\nPCKall@10: {PCK["all"][10]}\nPCKall@15: {PCK["all"][50]}\nPCKall@20: {PCK["all"][20]}')
     # caclulate MSE of predictions and log
-    
+    mse_dict = MSE_loss_corners(pixelerrors)
+    for cat,mse in mse_dict.items():
+        print(f'MSE_loss_{cat}: {mse}')
 
 def main():
     # testPCK()

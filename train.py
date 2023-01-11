@@ -357,14 +357,14 @@ def main(config=params):
             images,targets = next(iter(validation_loader))
             pred_images = get_prediction_images(model,images,targets,device, num_objects=num_objects,opaqueness=0.5)
 
-            pred_images_dict = {f'Image ID: {image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
+            pred_images_dict = {f'Image_ID_{image_id}': wandb.Image(image_array, caption=f"Prediction at epoch {epoch}") for image_id,image_array in pred_images.items()}
             pred_images_dict['epoch'] = epoch
             wandb.log(pred_images_dict)
 
     print('\nFINISHED TRAINING :) #################################################################################\n')
 
     # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
-    evaluate(model, validation_loader, device)
+    # evaluate(model, validation_loader, device)
     ###################### save losses and weights from final epoch
     save_model(save_folder=save_folder, model=model, loss_dict=loss_dict, type='last')
     print(f'Best model achieved at epoch {best_epoch}.')

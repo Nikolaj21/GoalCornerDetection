@@ -135,3 +135,5 @@ Data-new/
 .vscode/
 Data-reannotate/
 # Models/
+Data_test/
+Data_update_all/

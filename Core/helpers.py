@@ -195,7 +195,6 @@ def eval_PCK(model, data_loader, device, thresholds, num_objects):
     """
     # calculate pixel error between ground-truth and predictions for all corners, TL, TR, BL and BR (total of 5 lists (deques))
     pixelerrors = find_pixelerror(model,data_loader,device,num_objects=num_objects)
-
     # count the number of correctly classified keypoints according to every threshold
     print(f'Running PCK evaluation on all thresholds...')
     start_time = time.time()
