@@ -318,14 +318,27 @@ def crop_images(images,crop_regions_images):
         images_crops.append(image_crops)
     return images_crops
 
-def visualize_images(images,figtitle=None,subplottitles=None,figsize=(20,20), show_axis=False):
+def visualize_images(images,show_axis=False,**kwargs):
+    '''
+    Plot a list of images. Dimensions for plotgrid calculated automatically.
+    Args:
+    images: should be a list of np.array format images with each having dimensions (W,H,C)
+    show_axis: bool, whether or not to show the axis in every subplot
+    Options from kwargs:
+        figtitle: str, main title of figure
+        subplottitles, list[str], title of every subplot
+        figsize: tuple(W,H), width and height of figure
+        subplottitlesize: int, size of the titles in the subplots
+    '''
+
     n = len(images)
     # Makes the plot dimensions in such a way that the images fit into a grid, that is as square as possible
     plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n)))
+    subplottitles = kwargs.get('subplottitles')
     if subplottitles is None:
         subplottitles = [None for _ in range(n)]
-    fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=figsize, sharex=True, gridspec_kw=dict(hspace=0.05,wspace=0.05)) #layout="constrained",
-    fig.suptitle(figtitle)
+    fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=kwargs.get('figsize'), sharex=True, gridspec_kw=dict(hspace=0.05,wspace=0.05)) #layout="constrained",
+    fig.suptitle(kwargs.get('figtitle'))
     if plotdim == (1,1):
         for image in images:
             axes.imshow(image)
@@ -334,7 +347,7 @@ def visualize_images(images,figtitle=None,subplottitles=None,figsize=(20,20), sh
         for i,image in enumerate(images):
             axes.ravel()[i].imshow(image)
             axes.ravel()[i].axis(show_axis)
-            axes.ravel()[i].set_title(subplottitles[i])
+            axes.ravel()[i].set_title(subplottitles[i], size=kwargs.get('subplottitlesize'))
 
 def visualize_cropped_results(model, images, targets, device, num_objects, figsize=(10,10), opaqueness=0.5):
     model.eval()

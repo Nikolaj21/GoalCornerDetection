@@ -259,3 +259,29 @@ def get_model_time(model, data_loader, device):
     median_time = np.median(model_times)
     print(f'Average model time: {mean_time} s\nMedian model time: {median_time}')
     return mean_time,median_time
+
+def order_keypoints_numpy(keypoints):
+    '''
+    Given a np.array of keypoints for football goal corners, return the points in the order TL,TR,BL,BR
+    '''
+    sumorder = np.argsort(np.sum(keypoints,axis=1))
+    # order keypoints so that first point is TL and last point is BR
+    ordered_keypoints = keypoints[sumorder]
+    # check if middle two points are ordered correctly, else swap them
+    valcheck = np.argsort(ordered_keypoints[1:3],axis=0)
+    if not (valcheck == np.array([[1,0],[0,1]])).all():
+        ordered_keypoints[[1,2],:] = ordered_keypoints[[2,1],:]
+    return ordered_keypoints
+
+def order_keypoints_torch(keypoints):
+    '''
+    Given a torch.tensor of keypoints for football goal corners, return the points in the order TL,TR,BL,BR
+    '''
+    sumorder = keypoints.sum(axis=1).argsort()
+    # order keypoints so that first point is TL and last point is BR
+    ordered_keypoints = keypoints[sumorder]
+    # check if middle two points are ordered correctly, else swap them
+    valcheck = ordered_keypoints[1:3,:2].argsort(axis=0)
+    if not (valcheck == torch.tensor([[1,0],[0,1]])).all():
+        ordered_keypoints[[1,2],:] = ordered_keypoints[[2,1],:]
+    return ordered_keypoints

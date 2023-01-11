@@ -74,8 +74,9 @@ class Params:
         self.model_type = "4box"
         self.filter_data = 'True'
         self.wandb_dir = '/zhome/60/1/118435/Master_Thesis/Scratch/s163848/'
-        self.bbox_expand_x = 0.05
-        self.bbox_expand_y = 0.05
+        self.bbox_expand = 0.05
+        self.bbox_expand_x = self.bbox_expand
+        self.bbox_expand_y = self.bbox_expand
 
         self.test_only = False
         self.load_path = "No path"
@@ -119,6 +120,8 @@ def get_args_parser(add_help=True):
     parser.add_argument("--wandb_dir", default=params.wandb_dir, type=str, help="Directory in which to make wandb folder for storing data from runs.")
     parser.add_argument("--bbox_expand_x", default=params.bbox_expand_x, type=float, help="relative width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
     parser.add_argument("--bbox_expand_y", default=params.bbox_expand_y, type=float, help="relative height (y) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
+    parser.add_argument("--bbox_expand", default=params.bbox_expand_y, type=float, help="relative height (y) and width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
+
 
     parser.add_argument("--test_only", dest="test_only", action="store_true", help="If option is set, the script will only test the model")
     parser.add_argument("--load_path", default=params.load_path, type=str, help="path to load model checkpoint from. Must be present if --test-only is used")
