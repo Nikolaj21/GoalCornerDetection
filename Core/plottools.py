@@ -51,33 +51,12 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
     image = make_GT_image(image, bboxes, keypoints, opaqueness=0.4)
 
 
-    # for bbox in bboxes:
-    #     start_point = (bbox[0], bbox[1])
-    #     end_point = (bbox[2], bbox[3])
-    #     image = cv2.rectangle(image.copy(), start_point, end_point, (0,255,0), 2)
-    
-    # for kps in keypoints:
-    #     for idx, kp in enumerate(kps):
-    #         image = cv2.circle(image.copy(), tuple(kp), 5, (255,0,0), 10)
-    #         image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
-
     if image_original is None and keypoints_original is None:
         plt.figure(figsize=(20,10))
         plt.imshow(image)
 
     else:
         image_original = make_GT_image(image_original, bboxes_original, keypoints_original, opaqueness=0.4)
-
-        # for bbox in bboxes_original:
-        #     start_point = (bbox[0], bbox[1])
-        #     end_point = (bbox[2], bbox[3])
-        #     image_original = cv2.rectangle(image_original.copy(), start_point, end_point, (0,255,0), 2)
-
-        # keypoints_classes_ids2names_original= {0: 'top-left', 1: 'top-right', 2: 'bot-left', 3: 'bot-right'}
-        # for kps in keypoints_original:
-        #     for idx, kp in enumerate(kps):
-        #         image_original = cv2.circle(image_original, tuple(kp), 5, (255,0,0), 10)
-        #         image_original = cv2.putText(image_original, " " + keypoints_classes_ids2names_original[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
 
         f, ax = plt.subplots(1, 2, figsize=(40, 40))
 
@@ -102,20 +81,6 @@ def visualize_results(model, images, targets, device, num_objects, figsize=(40,3
         print(f'Scores for images\n')
         for id,scores in zip(pred_images.keys(),scores_images):
             print(f"scores image {id}: {scores}")
-
-    # n = len(images)
-    # # Makes the plot dimensions in such a way that the images fit into a grid, that is as square as possible
-    # plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n))) 
-
-    # _,axes = plt.subplots(plotdim[0],plotdim[1], figsize=(40,40), layout="constrained")
-    # if plotdim == (1,1):
-    #     for im_id,pred_image in pred_images.items():
-    #         axes.imshow(pred_image)
-    #         axes.set_title(f'Image ID: {im_id}')
-    # else:
-    #     for i,(im_id,pred_image) in enumerate(pred_images.items()):
-    #         axes.ravel()[i].imshow(pred_image)
-    #         axes.ravel()[i].set_title(f'Image ID: {im_id}')
     
     im_ids, pred_ims = zip(*pred_images.items())
     visualize_images(images=pred_ims,
@@ -143,8 +108,10 @@ def get_prediction_images(model, images, targets, device, num_objects, opaquenes
     for image,target,output in zip(images,targets,outputs):
         id = target['image_id'].item()
         # scores = to_numpy(output['scores'])
-        keypoints_gt = kps_to_cv2(target['keypoints'])
-        keypoints_ua = kps_to_cv2(target['keypoints_ua'])
+        # keypoints_gt = kps_to_cv2(target['keypoints'])
+        # keypoints_ua = kps_to_cv2(target['keypoints_ua'])
+        keypoints_gt = target['keypoints']
+        keypoints_ua = target['keypoints_ua']
         #bboxes,keypoints = NMS(output,score_thresh=score_thresh,iou_thresh=iou_thresh, num_objects=num_objects)
         bboxes,keypoints,labels,scores = filter_preds(output,num_objects=num_objects)
         pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt, keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores, labels=labels, return_scores=return_scores)
@@ -165,7 +132,16 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
     # keypoints_classes_ids2names = {1: 'TL', 2: 'TR', 3: 'BL', 4: 'BR'}
     label_to_color =  {1: (255,0,0), 2: (0,255,0), 3: (0,150,255), 4: (255,255,0)}
     # convert data to correct type for using with cv2
-    image,bboxes,keypoints = data_to_cv2(image,bboxes,keypoints)
+    image = im_to_cv2(image)
+    if bboxes is not None:
+        bboxes = bboxes_to_cv2(bboxes)
+    if keypoints is not None:
+        keypoints = kps_to_cv2(keypoints)
+    if keypointsGT is not None:
+        keypointsGT = kps_to_cv2(keypointsGT)
+    if keypointsUA is not None:
+        keypointsUA = kps_to_cv2(keypointsUA)    
+
     if bboxes:
         # put all bounding boxes in the image
         for i,bbox in enumerate(bboxes):
@@ -173,7 +149,8 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
             end_point = (bbox[2], bbox[3])
             image = cv2.rectangle(image.copy(), start_point, end_point, (0,255,0), 2)
             # add prediction confidence for each box
-            image = cv2.putText(image.copy(), f"L:{labels[i]} C:{round(scores[i],3)}", start_point, cv2.FONT_HERSHEY_SIMPLEX, 1, label_to_color[labels[i]], 2, cv2.LINE_AA)
+            if labels and scores:
+                image = cv2.putText(image.copy(), f"L:{labels[i]} C:{round(scores[i],3)}", start_point, cv2.FONT_HERSHEY_SIMPLEX, 1, label_to_color[labels[i]], 2, cv2.LINE_AA)
     if keypointsGT:
         # put all ground-truth keypoints in the image
         for kpsGT in keypointsGT:
@@ -255,12 +232,10 @@ def filter_preds(output, num_objects):
 
     return bboxes,keypoints,labels,scores
 
-def data_to_cv2(image,bboxes,keypoints):
-    image = (im_to_numpy(image) * 255).astype(np.uint8)
-    bboxes = [list(map(int, bbox.tolist())) for bbox in bboxes]
-    keypoints = kps_to_cv2(keypoints)#[[list(map(int, kp[:2])) for kp in kps] for kps in keypoints]
-    return image,bboxes,keypoints
-
+def im_to_cv2(image):
+    return (im_to_numpy(image) * 255).astype(np.uint8)
+def bboxes_to_cv2(bboxes):
+    return [list(map(int, bbox.tolist())) for bbox in bboxes]
 def kps_to_cv2(keypoints):
     keypoints = [[list(map(int, kp[:2])) for kp in kps] for kps in keypoints]
     return keypoints
@@ -273,7 +248,7 @@ def make_GT_image(image, bboxes, keypointsGT, opaqueness=0.4):
     """
     # keypoints_classes_ids2names = {0: 'TL', 1: 'TR', 2: 'BL', 3: 'BR'}
     # convert data to correct type for using with cv2
-    image,bboxes,keypointsGT = data_to_cv2(image,bboxes,keypointsGT)
+    image,bboxes,keypointsGT = im_to_cv2(image), bboxes_to_cv2(bboxes), kps_to_cv2(keypointsGT)
     # put all bounding boxes in the image
     for bbox in bboxes:
         start_point = (bbox[0], bbox[1])
@@ -330,7 +305,6 @@ def visualize_images(images,show_axis=False,**kwargs):
         figsize: tuple(W,H), width and height of figure
         subplottitlesize: int, size of the titles in the subplots
     '''
-
     n = len(images)
     # Makes the plot dimensions in such a way that the images fit into a grid, that is as square as possible
     plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n)))
