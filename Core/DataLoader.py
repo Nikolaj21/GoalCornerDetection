@@ -140,6 +140,9 @@ class GoalCalibrationDataset(Dataset):
         else:
             self.img_list_filtered, self.annotation_list_filtered, self.userannotation_list_filtered, self.old_idxs = self.img_list, self.annotation_list, self.userannotation_list, [i for i in range(len(self.img_list))]
         self.transforms = transforms
+        # load the net noise image and resize to image size
+        noise_pat = cv2.imread(str(Path(datapath + '/mesh_netting.png')))
+        self.netting_im = np.invert(noise_pat)
         
     def  __len__(self):
         return len(self.annotation_list_filtered)
@@ -320,13 +323,6 @@ def filter_data_lists(img_list,annotation_list,userannotation_list):
             old_idxs.append(idx)
             # add only annotation paths of type 'freekick'
             annotation_list_filtered.append(path)
-            # # make correct path for images
-            # splitpath = path.split('/')
-            # basepath = '/'.join(splitpath[:-3])
-            # img_name = splitpath[-1].split('.')[0]
-            # temp_img_path = os.path.join(basepath, img_name, img_name + '.jpg')
-            # # add image paths that are of type 'freekick'
-            # img_list_filtered.append(temp_img_path)
             img_list_filtered.append(img_list[idx])
             userannotation_list_filtered.append(userannotation_list[idx])
     print(f'All images: {len(img_list)}')

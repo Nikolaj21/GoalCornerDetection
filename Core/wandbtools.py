@@ -72,15 +72,17 @@ def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
         if num_outliers > 0:
             outlier_ids, outlier_labels, outliers = zip(*outliers_tuplist)
             # filter duplicate outlier_ids, but keep all outlier_labels and outliers (error values) that way we don't get duplicate outlier_predims
-            outlier_ids = tuple(set(outlier_ids))
+            outlier_ids = sorted(tuple(set(outlier_ids)))
             data_plot = [data_loader.dataset.dataset.__getitem__(i) for i in outlier_ids]
             outlierimages,outliertargets = zip(*data_plot)
             outlier_predims = get_prediction_images(model=model,images=outlierimages,targets=outliertargets,device=device,num_objects=num_objects)
             outlier_predims_list = [wandb.Image(image_array, caption=f"Prediction Outlier, Image ID: {image_id}") for image_id,image_array in outlier_predims.items()]
+            adjusted_mean = mean - sum(outliers) / Ndata
         else:
             outliers, outlier_ids, outlier_predims_list, outlier_labels = (),(),(),()
-        data.append((cat, Ndata, minval, maxval, std, mean, MSE, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids, outlier_predims_list, outlier_labels, num_missing_preds, missing_ids, missing_predims_list, missing_labels))
-    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'MSE', 'median', 'inlier_min', 'inlier_max', '#outliers', '%outliers', 'outliers', 'outlier_ids', 'outlier_ims', 'outlier_labels', '#missing_corners', 'missing_ids', 'missing_ims', 'missing_labels'])
+            adjusted_mean = mean
+        data.append((cat, Ndata, minval, maxval, std, mean, adjusted_mean, MSE, median, inlier_min, inlier_max, num_outliers, pct_outliers, outliers, outlier_ids, outlier_predims_list, outlier_labels, num_missing_preds, missing_ids, missing_predims_list, missing_labels))
+    table = wandb.Table(data=data, columns =['cat', 'Ndata', 'min', 'max', 'std', 'mean', 'adj_mean', 'MSE', 'median', 'inlier_min', 'inlier_max', '#outliers', '\%outliers', 'outliers', 'outlier_ids', 'outlier_ims', 'outlier_labels', '#missing_corners', 'missing_ids', 'missing_ims', 'missing_labels'])
     print('DONE')
     return table
 

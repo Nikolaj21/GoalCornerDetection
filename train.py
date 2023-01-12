@@ -8,11 +8,10 @@ from Core.helpers import split_data_train_test, eval_PCK, PCK_auc, MSE_loss_corn
 from Core.wandbtools import make_PCK_plot_objects, prediction_outliers
 from Core.plottools import plot_loss, get_prediction_images
 # from Core.DataLoader import GoalCalibrationDataset, GoalCalibrationDataset4boxes
-from utils import DATA_DIR, export_wandb_api
+from utils import DATA_DIR, export_wandb_api, DATA_DIR_TEST
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
 # https://github.com/pytorch/vision/tree/main/references/detection
-from Core.torchhelpers.utils import MetricLogger
-from Core.torchhelpers.utils import reduce_dict
+from Core.torchhelpers.utils import collate_fn
 from Core.torchhelpers.engine import train_one_epoch, evaluate, validate_epoch
 from torchvision.models.detection.rpn import AnchorGenerator
 import json
@@ -240,6 +239,40 @@ def main(config=params):
         state_dict = torch.load(args.load_path)
         number_aspect_ratios = len(state_dict.get('rpn.head.cls_logits.bias'))
         aspect_ratios_anchors = (aspect_ratios_all[:number_aspect_ratios], ) * len(anchor_sizes)
+
+        # torch.backends.cudnn.deterministic = True
+        # make dataloader for test set
+        GoalData_test = DataClass(DATA_DIR_TEST, transforms=None, filter_data=args.filter_data, config=args)
+        # my functions expect a dataloader defined from a torch.utils.data.Subset
+        indices = list(range(len(GoalData_test)))
+        GoalData_subset = torch.utils.data.Subset(GoalData_test,indices)
+        test_loader = torch.utils.data.DataLoader(GoalData_subset,
+                                                   batch_size=args.batch_size,
+                                                   collate_fn=collate_fn, 
+                                                   num_workers=args.workers, 
+                                                   pin_memory=False, 
+                                                   shuffle=args.shuffle_epoch)
+        # load model
+        anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
+        model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator)
+        model.to(device)
+        model.load_state_dict(state_dict)
+        # Evaluate PCK for all the keypoints
+        thresholds=np.arange(1,args.pckthreshup+1)
+        PCK,pixelerrors = eval_PCK(model,test_loader,device,thresholds=thresholds, num_objects=num_objects)
+        # Log the PCK values in wandb
+        PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
+        wandb.log(PCK_plot_objects)
+        
+        # Find the outliers in predictions and log them
+        outliertable = prediction_outliers(pixelerrors, model, test_loader, num_objects, device)
+        wandb.log({"outliers_table": outliertable})
+        print(f'Model has been tested!')
+
+        # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
+        evaluate(model, validation_loader, device)
+        return
+
     else: # make an anchor generator with 3 aspect_ratios (1 for now)
         # which aspect ratios to use for every anchor size. Assumes aspect_ratio = height / width
         aspect_ratios_anchors = (aspect_ratios_all[:1], ) * len(anchor_sizes)
@@ -277,27 +310,6 @@ def main(config=params):
             'all_total': []
         }
     }
-    
-    if args.test_only:
-        # torch.backends.cudnn.deterministic = True
-        
-        model.load_state_dict(state_dict)
-        # evaluate(model, validation_loader, device=device)
-        # Evaluate PCK for all the keypoints
-        thresholds=np.arange(1,args.pckthreshup+1)
-        PCK,pixelerrors = eval_PCK(model,validation_loader,device,thresholds=thresholds, num_objects=num_objects)
-        # Log the PCK values in wandb
-        PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
-        wandb.log(PCK_plot_objects)
-        
-        # Find the outliers in predictions and log them
-        outliertable = prediction_outliers(pixelerrors, model, validation_loader, num_objects, device)
-        wandb.log({"outliers_table": outliertable})
-        print(f'Model has been tested!')
-
-        # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
-        evaluate(model, validation_loader, device)
-        return
     
     best_epoch = None
     ###################### Training ####################################

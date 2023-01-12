@@ -129,6 +129,8 @@ def find_pixelerror(model, data_loader, device, num_objects):
     # Run through all images and get the pixel distance (error) between predictions and ground-truth
     for images, targets in data_loader:
         images = list(image.to(device) for image in images)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         # outputs will be a list of dict of len == batch_size
         with torch.no_grad():
             model_time_start = time.time()

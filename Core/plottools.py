@@ -258,7 +258,7 @@ def filter_preds(output, num_objects):
 def data_to_cv2(image,bboxes,keypoints):
     image = (im_to_numpy(image) * 255).astype(np.uint8)
     bboxes = [list(map(int, bbox.tolist())) for bbox in bboxes]
-    keypoints = kps_to_cv2(keypoints)#[[list(map(int, kp[:2])) for kp in kps] for kps in keypoints]
+    keypoints = kps_to_cv2(keypoints)
     return image,bboxes,keypoints
 
 def kps_to_cv2(keypoints):
