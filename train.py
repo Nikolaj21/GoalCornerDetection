@@ -230,8 +230,11 @@ def main(config=params):
     # Setting hyper-parameters
     # old anchor generator
     # anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
+    if args.model_type == '1box':
+        anchor_sizes = ((860,), (1608), (2110,),(2448,),(2836,))
     # the different sizes to use for the anchor boxes
-    anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
+    elif args.model_type == '4box':
+        anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
     # list of possible aspect_ratios to use, due to different models being trained on different number of aspect_ratios
     aspect_ratios_all = (4208/3120, 1.0, 2.0, 2.5, 3.0, 0.5, 4.0)
     if args.test_only:
