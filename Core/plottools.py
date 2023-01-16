@@ -307,11 +307,14 @@ def visualize_images(images,show_axis=False,**kwargs):
     '''
     n = len(images)
     # Makes the plot dimensions in such a way that the images fit into a grid, that is as square as possible
-    plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n)))
+    plotdim = kwargs.get('plotdim')
+    if plotdim is None:
+       plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n)))
     subplottitles = kwargs.get('subplottitles')
     if subplottitles is None:
         subplottitles = [None for _ in range(n)]
-    fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=kwargs.get('figsize'), sharex=True, gridspec_kw=dict(hspace=0.05,wspace=0.05)) #layout="constrained",
+    
+    fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=kwargs.get('figsize'), sharex=True, gridspec_kw=dict(hspace=kwargs.get('hspace'),wspace=kwargs.get('wspace'))) #layout="constrained",
     fig.suptitle(kwargs.get('figtitle'))
     if plotdim == (1,1):
         for image in images:
