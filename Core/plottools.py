@@ -123,7 +123,7 @@ def get_prediction_images(model, images, targets, device, num_objects, opaquenes
     else:
         return pred_images
     
-def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypointsUA=None, opaqueness=0.5, scores=None, labels=None, return_scores=False):
+def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypointsUA=None, opaqueness=0.5, scores=None, labels=None, bbox_color=(0,255,0), gt_color=(0,0,255), ua_color=(255,140,0), dt_color=(255,0,0)):
     """
     Adds bboxes and keypoints to a single image
     alpha is the opaqueness of the keypoints, lower value means more see-through (must be between 0 and 1)
@@ -147,7 +147,7 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
         for i,bbox in enumerate(bboxes):
             start_point = (bbox[0], bbox[1])
             end_point = (bbox[2], bbox[3])
-            image = cv2.rectangle(image.copy(), start_point, end_point, (0,255,0), 2)
+            image = cv2.rectangle(image.copy(), start_point, end_point, bbox_color, 2)
             # add prediction confidence for each box
             if labels and scores:
                 image = cv2.putText(image.copy(), f"L:{labels[i]} C:{round(scores[i],3)}", start_point, cv2.FONT_HERSHEY_SIMPLEX, 1, label_to_color[labels[i]], 2, cv2.LINE_AA)
@@ -156,7 +156,7 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
         for kpsGT in keypointsGT:
             for kp_gt in kpsGT:
                 overlay = image.copy()
-                overlay = cv2.circle(img=overlay, center=tuple(kp_gt), radius=10, color=(0,0,255), thickness=cv2.FILLED)#, thickness=10)
+                overlay = cv2.circle(img=overlay, center=tuple(kp_gt), radius=10, color=gt_color, thickness=cv2.FILLED)#, thickness=10)
                 image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
                 # image = cv2.circle(img=image.copy(),center=tuple(kp_gt), radius=10, color=(0,0,255), thickness=1)#cv2.FILLED)
 
@@ -165,7 +165,7 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
         for kpsUA in keypointsUA:
             for kp_ua in kpsUA:
                 overlay = image.copy()
-                overlay = cv2.circle(img=overlay, center=tuple(kp_ua), radius=10, color=(255,140,0), thickness=cv2.FILLED)#, thickness=5)
+                overlay = cv2.circle(img=overlay, center=tuple(kp_ua), radius=10, color=ua_color, thickness=cv2.FILLED)#, thickness=5)
                 image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
                 # add circle around GT which has radius set to radial distance between gt and ua
                 # radius = int(np.linalg.norm(np.subtract(kp_ua[:2],kp_gt[:2])))
@@ -175,7 +175,7 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
         for kps in keypoints:
             for kp in kps:
                 overlay = image.copy()
-                overlay = cv2.circle(img=overlay, center=tuple(kp), radius=10, color=(255,0,0), thickness=cv2.FILLED)#thickness=5)
+                overlay = cv2.circle(img=overlay, center=tuple(kp), radius=10, color=dt_color, thickness=cv2.FILLED)#thickness=5)
                 image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
                 # FIXME temporarily removed while testing 4corner method
                 # image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
