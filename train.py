@@ -125,7 +125,6 @@ def get_args_parser(add_help=True):
     parser.add_argument("--test_only", dest="test_only", action="store_true", help="If option is set, the script will only test the model")
     parser.add_argument("--load_path", default=params.load_path, type=str, help="path to load model checkpoint from. Must be present if --test-only is used")
     parser.add_argument("--data_aug", dest="data_aug", action="store_true", help="Augment data during training")
-    parser.add_argument("--sweep", action="store_true", help="Do a hyperparameter sweep according to the yaml file defined in the same directory as this train.py script.")
 
     return parser
 
@@ -201,6 +200,7 @@ def main(config=params):
     weight_decay={args.weight_decay}
     num_workers={args.workers}
     filter_data={args.filter_data}
+    data_aug={args.data_aug}
     """)
 
     # initialize an instance of the dataloader class, one for train and one for validation
@@ -231,24 +231,32 @@ def main(config=params):
     # old anchor generator
     # anchor_generator = AnchorGenerator(sizes=(64, 128, 256, 512, 1024), aspect_ratios=(1.0, 2.0, 2.5, 3.0, 4.0))
     if args.model_type == '1box':
-        anchor_sizes = ((860,), (1608), (2110,),(2448,),(2836,))
+        anchor_sizes = ((860,), (1608,), (2110,), (2448,) ,(2836,))
+        num_aspect_ratios = 5
     # the different sizes to use for the anchor boxes
     elif args.model_type == '4box':
         anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
+        num_aspect_ratios = 1
+    print(f'anchor_sizes: {anchor_sizes}')
     # list of possible aspect_ratios to use, due to different models being trained on different number of aspect_ratios
-    aspect_ratios_all = (4208/3120, 1.0, 2.0, 2.5, 3.0, 0.5, 4.0)
+    aspect_ratios_all = (4208/3120, 1.0, 2.0, 2.5, 3.0, 0.5, 4.0) # assuming ar = w / h
+    # aspect_ratios_all = (3120/4208, ) # assuming ar = h / w
+    # aspect_ratios_all = (1.2, 1.7, 2.4, 2.6, 3.0) # assuming aspect_ratio = width/height
+    # aspect_ratios_all = (0.3, 0.4, 0.5, 0.7, 0.9) # assuming aspect_ratio = height/width
     if args.test_only:
+        torch.backends.cudnn.deterministic = True
         # finds the number of aspect ratios used from the state_dict if loading a previously trained model
         state_dict = torch.load(args.load_path)
         number_aspect_ratios = len(state_dict.get('rpn.head.cls_logits.bias'))
         aspect_ratios_anchors = (aspect_ratios_all[:number_aspect_ratios], ) * len(anchor_sizes)
 
-        # torch.backends.cudnn.deterministic = True
-        # make dataloader for test set
-        GoalData_test = DataClass(DATA_DIR_TEST, transforms=None, filter_data=args.filter_data, config=args)
+        
+        
+        # make dataloader for test set (when testing, should input test dataset as args.data_dir if you want to test on test set, not validation set)
+        # GoalData_test = DataClass(DATA_DIR_TEST, transforms=None, filter_data=args.filter_data, config=args)
         # my functions expect a dataloader defined from a torch.utils.data.Subset
-        indices = list(range(len(GoalData_test)))
-        GoalData_subset = torch.utils.data.Subset(GoalData_test,indices)
+        indices = list(range(len(GoalData_val)))
+        GoalData_subset = torch.utils.data.Subset(GoalData_val,indices)
         test_loader = torch.utils.data.DataLoader(GoalData_subset,
                                                    batch_size=args.batch_size,
                                                    collate_fn=collate_fn, 
@@ -273,12 +281,13 @@ def main(config=params):
         print(f'Model has been tested!')
 
         # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
-        evaluate(model, validation_loader, device)
+        # evaluate(model, validation_loader, device)
         return
 
-    else: # make an anchor generator with 3 aspect_ratios (1 for now)
+    else: # make an anchor generator with 3 aspect_ratios (1 for now) (for 1box: all for now)
         # which aspect ratios to use for every anchor size. Assumes aspect_ratio = height / width
-        aspect_ratios_anchors = (aspect_ratios_all[:1], ) * len(anchor_sizes)
+        aspect_ratios_anchors = (aspect_ratios_all[:num_aspect_ratios], ) * len(anchor_sizes)
+    print(f'aspect_ratios: {aspect_ratios_anchors}')
     anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
     model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator)
     model.to(device)
@@ -455,15 +464,3 @@ def test(args=None):
 if __name__ == '__main__':
     args = get_args_parser().parse_args()
     main(args)
-
-    # if args.sweep:
-    #     import yaml
-    #     with open('./sweep.yaml','r') as file:
-    #         sweep_config = yaml.load(file,Loader=yaml.FullLoader)
-    #     sweep_id = wandb.sweep(sweep=sweep_config)
-        
-    #     wandb.agent(sweep_id, function=main, count=3)
-
-    # else:
-        # main(args)
-        # test(args)

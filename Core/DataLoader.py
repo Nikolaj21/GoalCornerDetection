@@ -125,7 +125,6 @@ class GoalCalibrationDatasetOLD(Dataset):
 ############################################################
 ############################################################
 ## data loader for the newly annotated dataset (with option of data augmentation)
-# FIXME Remember to add ua annotations to this dataloader as well.
 class GoalCalibrationDataset(Dataset):
     def __init__(self,datapath, transforms=None, filter_data=True, config=None):
         self.num_objectclasses_per_image = 1
