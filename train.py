@@ -131,22 +131,15 @@ def get_args_parser(add_help=True):
 
 
 def main(config=params):
-    print('\n#################################################################################################')
-    print('RUNNING MAIN :) #################################################################################\n')
-    print(f'filter_data1: {config.filter_data}, type: {type(config.filter_data)}')
     # convert these arguments from strings to boolean
     config.shuffle_dataset = bool(strtobool(config.shuffle_dataset))
     config.shuffle_epoch = bool(strtobool(config.shuffle_epoch))
     config.filter_data = bool(strtobool(config.filter_data))
-
-    print(f'filter_data2: {config.filter_data}, type: {type(config.filter_data)}')
-
     # set wandb api key as environment variable
     export_wandb_api()
     # initialize wandb run
     run = wandb.init(project=config.project_name, name=config.model_name, config=config, dir=config.wandb_dir)
     args = wandb.config
-    print(f'filter_data3: {args.filter_data}, type: {type(args.filter_data)}')
     # change model_name to the wandb generated one, if relevant
     if not args.model_name:
         args.update({'model_name':run.name}, allow_val_change=True)
@@ -238,19 +231,16 @@ def main(config=params):
         anchor_sizes = ((64,), (128,), (256,), (384,), (512,))
         num_aspect_ratios = 1
     print(f'anchor_sizes: {anchor_sizes}')
+    print(f'image shape: {GoalData_train[0][0].shape}')
     # list of possible aspect_ratios to use, due to different models being trained on different number of aspect_ratios
-    aspect_ratios_all = (4208/3120, 1.0, 2.0, 2.5, 3.0, 0.5, 4.0) # assuming ar = w / h
-    # aspect_ratios_all = (3120/4208, ) # assuming ar = h / w
-    # aspect_ratios_all = (1.2, 1.7, 2.4, 2.6, 3.0) # assuming aspect_ratio = width/height
-    # aspect_ratios_all = (0.3, 0.4, 0.5, 0.7, 0.9) # assuming aspect_ratio = height/width
+    aspect_ratios_all = (4208/3120, 1.0, 2.0, 2.5, 3.0, 0.5, 4.0)
+    # aspect_ratios_all = (1.2, 1.7, 2.4, 2.6, 3.0) # test aspect_ratios
     if args.test_only:
         torch.backends.cudnn.deterministic = True
         # finds the number of aspect ratios used from the state_dict if loading a previously trained model
         state_dict = torch.load(args.load_path)
         number_aspect_ratios = len(state_dict.get('rpn.head.cls_logits.bias'))
         aspect_ratios_anchors = (aspect_ratios_all[:number_aspect_ratios], ) * len(anchor_sizes)
-
-        
         
         # make dataloader for test set (when testing, should input test dataset as args.data_dir if you want to test on test set, not validation set)
         # GoalData_test = DataClass(DATA_DIR_TEST, transforms=None, filter_data=args.filter_data, config=args)

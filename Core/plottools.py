@@ -66,7 +66,7 @@ def visualize(image, bboxes, keypoints, image_original=None, bboxes_original=Non
         ax[1].imshow(image)
         ax[1].set_title(f'{title_new}, Prediction confidence: {pred_score:.4f}', fontsize=fontsize)
 
-def visualize_results(model, images, targets, device, num_objects, figsize=(40,30), show_axis=False, score_thresh=0.7, iou_thresh=0.3, opaqueness=0.5, return_scores=True):
+def visualize_results(model, images, targets, device, num_objects, figsize=(40,30), show_axis=False, score_thresh=0.7, iou_thresh=0.3, opaqueness=0.5, return_scores=True, **kwargs):
     '''
     Plots the results, i.e. bounding boxes and keypoints for a given model and list of images. Also plots the ground-truth keypoints.
     Args:
@@ -75,19 +75,28 @@ def visualize_results(model, images, targets, device, num_objects, figsize=(40,3
         score_thresh: A threshold for the confidence score on the output from the model, so we only plot boxes where the model has a high confidence.
         iou_thresh: A threshold for performing NMS on the resulting predictions after doing the score thresholding.
     '''
+    
 
-    pred_images,scores_images = get_prediction_images(model,images,targets,device,num_objects=num_objects,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness, return_scores=return_scores)
+    pred_im_outputs = get_prediction_images(model,images,targets,device,num_objects=num_objects,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness, return_scores=return_scores)
     if return_scores:
+        pred_images, scores_images = pred_im_outputs
         print(f'Scores for images\n')
         for id,scores in zip(pred_images.keys(),scores_images):
             print(f"scores image {id}: {scores}")
+    else:
+        pred_images = pred_im_outputs
     
     im_ids, pred_ims = zip(*pred_images.items())
+    subplottitles = kwargs.get('subplottitles')
+    if subplottitles is None:
+        kwargs['subplottitles'] = [f'Image ID: {im_id}' for im_id in im_ids]
+
+
     visualize_images(images=pred_ims,
-                    figtitle=f'Prediction Results',
-                    subplottitles=[f'Image ID: {im_id}' for im_id in im_ids],
+                    figtitle=kwargs.get('figtitle'),
                     figsize=figsize,
-                    show_axis=show_axis)
+                    show_axis=show_axis,
+                    **kwargs)
     
     return
     
@@ -114,7 +123,7 @@ def get_prediction_images(model, images, targets, device, num_objects, opaquenes
         keypoints_ua = target['keypoints_ua']
         #bboxes,keypoints = NMS(output,score_thresh=score_thresh,iou_thresh=iou_thresh, num_objects=num_objects)
         bboxes,keypoints,labels,scores = filter_preds(output,num_objects=num_objects)
-        pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt, keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores, labels=labels, return_scores=return_scores)
+        pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt, keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores, labels=labels)
         pred_images[id] = pred_image
 
     if return_scores:
@@ -313,7 +322,7 @@ def visualize_images(images,show_axis=False,**kwargs):
     subplottitles = kwargs.get('subplottitles')
     if subplottitles is None:
         subplottitles = [None for _ in range(n)]
-    
+
     fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=kwargs.get('figsize'), sharex=True, gridspec_kw=dict(hspace=kwargs.get('hspace'),wspace=kwargs.get('wspace'))) #layout="constrained",
     fig.suptitle(kwargs.get('figtitle'))
     if plotdim == (1,1):
@@ -326,7 +335,8 @@ def visualize_images(images,show_axis=False,**kwargs):
             axes.ravel()[i].axis(show_axis)
             axes.ravel()[i].set_title(subplottitles[i], size=kwargs.get('subplottitlesize'))
 
-def visualize_cropped_results(model, images, targets, device, num_objects, figsize=(10,10), opaqueness=0.5):
+def visualize_cropped_results(model, images, targets, device, num_objects, figsize=(10,10), opaqueness=0.5, **kwargs):
+    assert num_objects == 4 or num_objects == 1, f' given parameter num_objects ({num_objects}) must be set to either 1 or 4!'
     model.eval()
     model.to(device)
     images = list(image.to(device) for image in images)
@@ -340,30 +350,53 @@ def visualize_cropped_results(model, images, targets, device, num_objects, figsi
     # number of pixels to crop the pred_boxes by, so you can't see the drawn bounding boxes
     ce = 2
     for image,target,output in zip(images,targets,outputs):
-        keypoints_gt = kps_to_cv2(target['keypoints'])
-        keypoints_ua = kps_to_cv2(target['keypoints_ua'])
+        # keypoints_gt = kps_to_cv2(target['keypoints'])
+        # keypoints_ua = kps_to_cv2(target['keypoints_ua'])
+        keypoints_gt = target['keypoints']
+        keypoints_ua = target['keypoints_ua']
         im_id = target['image_id'].item()
     
         bboxes,keypoints,labels,scores = filter_preds(output,num_objects=num_objects)
         pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt,
                                      keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores,
-                                     labels=labels, return_scores=False)
+                                     labels=labels)
         # create crop_regions, making it a bit smaller so the boxes drawn on the image don't show
-        crop_regions = np.stack([to_numpy(box,as_int=True)+np.array([ce,ce,-ce,-ce]) for box in bboxes])
+        if num_objects == 4:
+            crop_regions = np.stack([to_numpy(box,as_int=True)+np.array([ce,ce,-ce,-ce]) for box in bboxes])
+        elif num_objects == 1:
+            bbox_expand = 0.05
+            keypoints_temp = to_numpy(keypoints[0][:,:2])
+            h,w = image.shape[1:3]
+            boxes_topleft_expand = keypoints_temp - np.array([bbox_expand*w,bbox_expand*h])
+            box_topleft_keepinIm = np.array([[val if val > 0 else 1 for val in point] for point in boxes_topleft_expand])
+            boxes_botright_expand = keypoints_temp + np.array([bbox_expand*w,bbox_expand*h])
+            maxsizes = (w,h)
+            box_botright_keepinIm = np.array([[val if val <= maxsizes[i] else maxsizes[i]-1 for i,val in enumerate(point)] for point in boxes_botright_expand])
+            bboxes_temp = np.concatenate((box_topleft_keepinIm,box_botright_keepinIm),axis=1)
+            crop_regions = np.stack([box.astype(int)+np.array([ce,ce,-ce,-ce]) for box in bboxes_temp])
+            
         image_crops = crop_image(image=pred_image,crop_regions=crop_regions)
         
         images_crops.append(image_crops)
         im_ids.append(im_id)
         labels_images.append(labels)
         scores_images.append(scores)
-        
-    for idx in range(len(images)):
-        visualize_images(images=images_crops[idx],
-                         figtitle=f'Image ID: {im_ids[idx]}',
-                         subplottitles=[f'label: {label}, score: {np.round(conf,3)}'
-                                        for label,conf in zip(labels_images[idx],scores_images[idx])],
-                         figsize=figsize)
-
+    if num_objects == 4:
+        for idx in range(len(images)):
+            if kwargs.get('subplottitles') is None:
+                kwargs['subplottitles'] = [f'label: {label}, score: {np.round(conf,3)}'
+                                           for label,conf in zip(labels_images[idx],scores_images[idx])]
+            visualize_images(images=images_crops[idx],
+                             figtitle=f'Image ID: {im_ids[idx]}',
+                             figsize=figsize,
+                             **kwargs)
+    elif num_objects == 1:
+        for idx in range(len(images)):
+            visualize_images(images=images_crops[idx],
+                             figtitle=f'Image ID: {im_ids[idx]}',
+                             figsize=figsize,
+                             **kwargs)
+    return
 def plot_loss(loss_dict, save_folder, epochs):
         '''
         plot losses from a loss dict
