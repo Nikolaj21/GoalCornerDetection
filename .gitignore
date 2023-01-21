@@ -134,4 +134,6 @@ PaperImplementations/
 Data-new/
 .vscode/
 Data-reannotate/
-Models/model_states
+# Models/
+Data_test/
+Data_update_all/

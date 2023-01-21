@@ -1,13 +1,12 @@
 # list of packages I needed to pip install on hpc server venv
 matplotlib
 opencv-python
-torchsummary
 cython
 numba
 scipy
 tqdm
 pycocotools
-
+torchinfo
 
 
 # conda requirements for conda environment gcdhpc
@@ -19,4 +18,4 @@ conda install -c conda-forge jupyter
 
 conda install tqdm cffi h5py scipy pytz imageio seaborn
 conda install -c conda-forge pycocotools albumentations wandb jupyterthemes
-conda install -c anaconda scikit-learn pandas
+conda install -c anaconda scikit-learn pandas pyyaml
