@@ -51,7 +51,7 @@ def save_model(save_folder, model, loss_dict, type):
 class Params:
     def defaultparams(self):
         self.data_dir = DATA_DIR
-        self.batch_size = 4
+        self.batch_size = 8
         self.validation_split = 0.25
         self.epochs = 5
         self.workers = 6
@@ -68,7 +68,7 @@ class Params:
         self.data_amount = 1
         self.shuffle_dataset = "True"
         self.shuffle_epoch = "False"
-        self.shuffle_dataset_seed = -1
+        self.shuffle_dataset_seed = 20
         self.shuffle_epoch_seed = -1
         self.model_type = "4box"
         self.filter_data = 'True'
