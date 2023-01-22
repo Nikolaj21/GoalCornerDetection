@@ -159,22 +159,19 @@ def find_pixelerror(model, data_loader, device, num_objects):
                     # take the set of keypoints with the highest score
                     obj_dt = sorted(obj_dt, key=lambda tup_kp_and_score: tup_kp_and_score[1], reverse=True)[0][0]
                     # find the distance between every gt and gt for this label, and add to list of distances, along with the image_id
-                    for gt,dt in zip(obj_gt,obj_dt):
-                        pixelerrors_all.append((target['image_id'].item(), label, np.linalg.norm(dt[:2]-gt[:2])))
+                    for count,(gt,dt) in enumerate(zip(obj_gt,obj_dt)):
+                        if num_objects == 1:
+                            pixelerrors_all.append((target['image_id'].item(), count+1, np.linalg.norm(dt[:2]-gt[:2])))
+                        elif num_objects == 4:
+                            pixelerrors_all.append((target['image_id'].item(), label, np.linalg.norm(dt[:2]-gt[:2])))
                 else: # the label is missing, add an identifier (None) so it is clear that this is a missing corner prediction
                     pixelerrors_all.append((target['image_id'].item(), label, None))
-    if num_objects == 1:
-        num_keypoints = 4
-        pixelerrors_TL = pixelerrors_all[0::num_keypoints]
-        pixelerrors_TR = pixelerrors_all[1::num_keypoints]
-        pixelerrors_BL = pixelerrors_all[2::num_keypoints]
-        pixelerrors_BR = pixelerrors_all[3::num_keypoints]
-    elif num_objects == 4:
-        TL_label,TR_label,BL_label,BR_label = 1,2,3,4
-        pixelerrors_TL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TL_label]
-        pixelerrors_TR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TR_label]
-        pixelerrors_BL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BL_label]
-        pixelerrors_BR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BR_label]
+
+    TL_label,TR_label,BL_label,BR_label = 1,2,3,4
+    pixelerrors_TL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TL_label]
+    pixelerrors_TR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TR_label]
+    pixelerrors_BL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BL_label]
+    pixelerrors_BR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BR_label]
 
     pixelerrors = {
         "all":pixelerrors_all,

@@ -324,7 +324,7 @@ def visualize_images(images,show_axis=False,**kwargs):
         subplottitles = [None for _ in range(n)]
 
     fig,axes = plt.subplots(plotdim[0],plotdim[1], figsize=kwargs.get('figsize'), sharex=True, gridspec_kw=dict(hspace=kwargs.get('hspace'),wspace=kwargs.get('wspace'))) #layout="constrained",
-    fig.suptitle(kwargs.get('figtitle'))
+    fig.suptitle(kwargs.get('figtitle'),size=kwargs.get('figtitlesize'))
     if plotdim == (1,1):
         for image in images:
             axes.imshow(image)
@@ -350,8 +350,6 @@ def visualize_cropped_results(model, images, targets, device, num_objects, figsi
     # number of pixels to crop the pred_boxes by, so you can't see the drawn bounding boxes
     ce = 2
     for image,target,output in zip(images,targets,outputs):
-        # keypoints_gt = kps_to_cv2(target['keypoints'])
-        # keypoints_ua = kps_to_cv2(target['keypoints_ua'])
         keypoints_gt = target['keypoints']
         keypoints_ua = target['keypoints_ua']
         im_id = target['image_id'].item()
@@ -361,20 +359,21 @@ def visualize_cropped_results(model, images, targets, device, num_objects, figsi
                                      keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores,
                                      labels=labels)
         # create crop_regions, making it a bit smaller so the boxes drawn on the image don't show
-        if num_objects == 4:
-            crop_regions = np.stack([to_numpy(box,as_int=True)+np.array([ce,ce,-ce,-ce]) for box in bboxes])
-        elif num_objects == 1:
+        h,w = image.shape[1:3]
+        bbox_expand = kwargs.get('bbox_expand')
+        if bbox_expand is None:
             bbox_expand = 0.05
+        
+        if num_objects == 4:
+            keypoints_temp = to_numpy(torch.concat([kp[:,:2] for kp in keypoints]))    
+        elif num_objects == 1:
             keypoints_temp = to_numpy(keypoints[0][:,:2])
-            h,w = image.shape[1:3]
-            boxes_topleft_expand = keypoints_temp - np.array([bbox_expand*w,bbox_expand*h])
-            box_topleft_keepinIm = np.array([[val if val > 0 else 1 for val in point] for point in boxes_topleft_expand])
-            boxes_botright_expand = keypoints_temp + np.array([bbox_expand*w,bbox_expand*h])
-            maxsizes = (w,h)
-            box_botright_keepinIm = np.array([[val if val <= maxsizes[i] else maxsizes[i]-1 for i,val in enumerate(point)] for point in boxes_botright_expand])
-            bboxes_temp = np.concatenate((box_topleft_keepinIm,box_botright_keepinIm),axis=1)
-            crop_regions = np.stack([box.astype(int)+np.array([ce,ce,-ce,-ce]) for box in bboxes_temp])
-            
+
+        crop_regions = make_crop_regions(bbox_expand,h,w,keypoints_temp,ce=ce)
+                
+        # if num_objects == 4:
+        #         crop_regions = np.stack([to_numpy(box,as_int=True)+np.array([ce,ce,-ce,-ce]) for box in bboxes])
+
         image_crops = crop_image(image=pred_image,crop_regions=crop_regions)
         
         images_crops.append(image_crops)
@@ -397,6 +396,17 @@ def visualize_cropped_results(model, images, targets, device, num_objects, figsi
                              figsize=figsize,
                              **kwargs)
     return
+
+def make_crop_regions(bbox_expand,imH,imW,keypoints,ce=2):
+    boxes_topleft_expand = keypoints - np.array([bbox_expand*imW,bbox_expand*imH])
+    box_topleft_keepinIm = np.array([[val if val > 0 else 1 for val in point] for point in boxes_topleft_expand])
+    boxes_botright_expand = keypoints + np.array([bbox_expand*imW,bbox_expand*imH])
+    maxsizes = (imW,imH)
+    box_botright_keepinIm = np.array([[val if val <= maxsizes[i] else maxsizes[i]-1 for i,val in enumerate(point)] for point in boxes_botright_expand])
+    bboxes_temp = np.concatenate((box_topleft_keepinIm,box_botright_keepinIm),axis=1)
+    crop_regions = np.stack([box.astype(int)+np.array([ce,ce,-ce,-ce]) for box in bboxes_temp])
+    return crop_regions
+
 def plot_loss(loss_dict, save_folder, epochs):
         '''
         plot losses from a loss dict
