@@ -283,3 +283,57 @@ def order_keypoints_torch(keypoints):
     if not (valcheck == torch.tensor([[1,0],[0,1]])).all():
         ordered_keypoints[[1,2],:] = ordered_keypoints[[2,1],:]
     return ordered_keypoints
+
+def make_UA_PCK_curve(GT_loader):
+    num_objects = 1
+    pixelerrors_all = []
+    print(f'Finding pixelerror for all predictions...')
+    start_time = time.time()
+    # Run through all images and get the pixel distance (error) between predictions and ground-truth
+    for _,targets in tqdm(GT_loader):
+        # extract the euclidean distance error (in pixels) between every ground-truth and detection keypoint in the batch. Also return image_ids and labels for every distance measure for reference
+        for target in targets:
+            label_to_gts = {}
+            label_to_dts = {}
+            # make a dictionary for the gts and dts in every target and output that save the label, keypoints and scores, for later sorting
+            for label,obj_GT,obj_UA in zip(target['labels'],target['keypoints'],target['keypoints_ua']):
+                obj_UA_fixorder = order_keypoints_torch(obj_UA)
+                if not (obj_UA == obj_UA_fixorder).all():
+                    print(f'order changed, id: {target["image_id"]}')
+                # find the distance between every gt and gt for this label, and add to list of distances, along witht the image_id
+                for count,(gt,dt) in enumerate(zip(obj_GT,obj_UA)):
+                    if num_objects == 4:
+                        pixelerrors_all.append((target['image_id'].item(), label.item(), np.linalg.norm(dt[:2]-gt[:2])))
+                    elif num_objects == 1:
+                        pixelerrors_all.append((target['image_id'].item(), count+1, np.linalg.norm(dt[:2]-gt[:2])))
+    TL_label,TR_label,BL_label,BR_label = 1,2,3,4
+    pixelerrors_TL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TL_label]
+    pixelerrors_TR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==TR_label]
+    pixelerrors_BL = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BL_label]
+    pixelerrors_BR = [pixelerrors_all[i] for i,(_,label,_) in enumerate(pixelerrors_all) if label==BR_label]
+    pixelerrors = {
+        "all":pixelerrors_all,
+        "TL":pixelerrors_TL,
+        "TR":pixelerrors_TR,
+        "BL": pixelerrors_BL,
+        "BR": pixelerrors_BR
+        }
+    total_time = time.time() - start_time
+    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+    print(f'Total time: {total_time_str}')
+
+    # count the number of correctly classified keypoints according to every threshold
+    print(f'Running PCK evaluation on all thresholds...')
+    start_time = time.time()
+    N_ims = len(GT_loader.dataset.indices)
+    total_keypoints = {'all':N_ims*4, 'TL':N_ims, 'TR':N_ims, 'BL':N_ims, 'BR':N_ims}
+    thresholds = np.arange(1,201)
+    PCK = {
+        key:{threshold: np.count_nonzero([error < threshold for _,_,error in errors]) / total_keypoints[key] for threshold in thresholds}
+        for key,errors in pixelerrors.items()
+        }
+
+    total_time = time.time() - start_time
+    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+    print(f'Total time: {total_time_str} ({total_time/len(thresholds):.4f} s / threshold)')
+    return PCK,pixelerrors

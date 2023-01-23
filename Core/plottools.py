@@ -318,7 +318,7 @@ def visualize_images(images,show_axis=False,**kwargs):
     # Makes the plot dimensions in such a way that the images fit into a grid, that is as square as possible
     plotdim = kwargs.get('plotdim')
     if plotdim is None:
-       plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n)))
+        plotdim = round(np.sqrt(n)), int(np.ceil(np.sqrt(n)))
     subplottitles = kwargs.get('subplottitles')
     if subplottitles is None:
         subplottitles = [None for _ in range(n)]

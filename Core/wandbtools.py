@@ -86,68 +86,12 @@ def prediction_outliers(errors_dict, model, data_loader, num_objects, device):
     print('DONE')
     return table
 
-def get_config():
-    return
-def sweep():
-    import random
-    # Define sweep config
-    sweep_configuration = {
-        'method': 'random',
-        'name': 'sweep',
-        'metric': {'goal': 'minimize', 'name': 'validation_loss'},
-        'parameters': 
-        {
-            'batch_size': {'values': [4,8,16,32]},
-            'epochs': {'values': [20,30,40,50]},
-            'lr': {'max': 0.1, 'min': 0.0001}
-        }
-    }
-
-    # Initialize sweep by passing in config. (Optional) Provide a name of the project.
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project='my-first-sweep')
-
-    # Define training function that takes in hyperparameter values from `wandb.config` and uses them to train a model and return metric
-    def train_one_epoch(epoch, lr, bs): 
-        acc = 0.25 + ((epoch/30) +  (random.random()/10))
-        loss = 0.2 + (1 - ((epoch-1)/10 +  random.random()/5))
-        return acc, loss
-
-    def evaluate_one_epoch(epoch): 
-        acc = 0.1 + ((epoch/20) +  (random.random()/10))
-        loss = 0.25 + (1 - ((epoch-1)/10 +  random.random()/6))
-        return acc, loss
-
-    def main():
-        run = wandb.init()
-
-        # note that we define values from `wandb.config` instead 
-        # of defining hard values
-        lr  =  wandb.config.lr
-        bs = wandb.config.batch_size
-        epochs = wandb.config.epochs
-
-        for epoch in np.arange(1, epochs):
-            train_acc, train_loss = train_one_epoch(epoch, lr, bs)
-            val_acc, val_loss = evaluate_one_epoch(epoch)
-
-        wandb.log({
-            'epoch': epoch, 
-            'train_acc': train_acc,
-            'train_loss': train_loss, 
-            'val_acc': val_acc, 
-            'val_loss': val_loss
-        })
-
-    # Start sweep job.
-    wandb.agent(sweep_id, function=main, count=4)
-
 def wandbapi_load_run(run_path):
     api = wandb.Api()
     run = api.run(run_path)
     return run
 
 def log_wandb_summary(objects,run):
-
     # Log the objects in wandb
     print('###############################')
     for obj_name, obj in objects.items():
@@ -213,7 +157,7 @@ def make_UA_PCK_curve():
     export_wandb_api()
     
     shuffle_dataset = True
-    shuffle_dataset_seed = 10
+    shuffle_dataset_seed = 20
     shuffle_epoch = False
     shuffle_epoch_seed = -1
     data_amount = 1
