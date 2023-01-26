@@ -77,7 +77,7 @@ def visualize_results(model, images, targets, device, num_objects, figsize=(40,3
     '''
     
 
-    pred_im_outputs = get_prediction_images(model,images,targets,device,num_objects=num_objects,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness, return_scores=return_scores)
+    pred_im_outputs = get_prediction_images(model,images,targets,device,num_objects=num_objects,score_thresh=score_thresh,iou_thresh=iou_thresh,opaqueness=opaqueness, return_scores=return_scores, **kwargs)
     if return_scores:
         pred_images, scores_images = pred_im_outputs
         print(f'Scores for images\n')
@@ -101,7 +101,7 @@ def visualize_results(model, images, targets, device, num_objects, figsize=(40,3
     return
     
 
-def get_prediction_images(model, images, targets, device, num_objects, opaqueness=0.5, return_scores=False, score_thresh=0.7,iou_thresh=0.3):
+def get_prediction_images(model, images, targets, device, num_objects, opaqueness=0.5, return_scores=False, score_thresh=0.7,iou_thresh=0.3,**kwargs):
     """
     Takes model, data and list of image_ids and returns
     list of prediction images for the model of type
@@ -116,14 +116,11 @@ def get_prediction_images(model, images, targets, device, num_objects, opaquenes
     pred_images = {}
     for image,target,output in zip(images,targets,outputs):
         id = target['image_id'].item()
-        # scores = to_numpy(output['scores'])
-        # keypoints_gt = kps_to_cv2(target['keypoints'])
-        # keypoints_ua = kps_to_cv2(target['keypoints_ua'])
         keypoints_gt = target['keypoints']
         keypoints_ua = target['keypoints_ua']
         #bboxes,keypoints = NMS(output,score_thresh=score_thresh,iou_thresh=iou_thresh, num_objects=num_objects)
         bboxes,keypoints,labels,scores = filter_preds(output,num_objects=num_objects)
-        pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt, keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores, labels=labels)
+        pred_image = make_pred_image(image, bboxes=bboxes, keypoints=keypoints, keypointsGT=keypoints_gt, keypointsUA=keypoints_ua, opaqueness=opaqueness, scores=scores, labels=labels,**kwargs)
         pred_images[id] = pred_image
 
     if return_scores:
@@ -132,12 +129,23 @@ def get_prediction_images(model, images, targets, device, num_objects, opaquenes
     else:
         return pred_images
     
-def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypointsUA=None, opaqueness=0.5, scores=None, labels=None, bbox_color=(0,255,0), gt_color=(0,0,255), ua_color=(255,140,0), dt_color=(255,0,0)):
+def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypointsUA=None, opaqueness=0.5, scores=None, labels=None, **kwargs):
     """
     Adds bboxes and keypoints to a single image
     alpha is the opaqueness of the keypoints, lower value means more see-through (must be between 0 and 1)
     returns np.array for the image
     """
+    defaultvalues = {
+        'bbox_color':(0,255,0),
+        'gt_color':(0,0,255),
+        'ua_color': (255,140,0),
+        'dt_color': (255,0,0),
+        'bbox_thickness': 2
+        }
+    for arg in defaultvalues.keys():
+        if kwargs.get(arg) is None:
+            kwargs[arg] = defaultvalues[arg]
+
     # keypoints_classes_ids2names = {1: 'TL', 2: 'TR', 3: 'BL', 4: 'BR'}
     label_to_color =  {1: (255,0,0), 2: (0,255,0), 3: (0,150,255), 4: (255,255,0)}
     # convert data to correct type for using with cv2
@@ -156,7 +164,7 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
         for i,bbox in enumerate(bboxes):
             start_point = (bbox[0], bbox[1])
             end_point = (bbox[2], bbox[3])
-            image = cv2.rectangle(image.copy(), start_point, end_point, bbox_color, 2)
+            image = cv2.rectangle(image.copy(), start_point, end_point, kwargs.get('bbox_color'), kwargs.get('bbox_thickness'))
             # add prediction confidence for each box
             if labels and scores:
                 image = cv2.putText(image.copy(), f"L:{labels[i]} C:{round(scores[i],3)}", start_point, cv2.FONT_HERSHEY_SIMPLEX, 1, label_to_color[labels[i]], 2, cv2.LINE_AA)
@@ -165,7 +173,7 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
         for kpsGT in keypointsGT:
             for kp_gt in kpsGT:
                 overlay = image.copy()
-                overlay = cv2.circle(img=overlay, center=tuple(kp_gt), radius=10, color=gt_color, thickness=cv2.FILLED)#, thickness=10)
+                overlay = cv2.circle(img=overlay, center=tuple(kp_gt), radius=10, color=kwargs.get('gt_color'), thickness=cv2.FILLED)#, thickness=10)
                 image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
                 # image = cv2.circle(img=image.copy(),center=tuple(kp_gt), radius=10, color=(0,0,255), thickness=1)#cv2.FILLED)
 
@@ -174,7 +182,7 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
         for kpsUA in keypointsUA:
             for kp_ua in kpsUA:
                 overlay = image.copy()
-                overlay = cv2.circle(img=overlay, center=tuple(kp_ua), radius=10, color=ua_color, thickness=cv2.FILLED)#, thickness=5)
+                overlay = cv2.circle(img=overlay, center=tuple(kp_ua), radius=10, color=kwargs.get('ua_color'), thickness=cv2.FILLED)#, thickness=5)
                 image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
                 # add circle around GT which has radius set to radial distance between gt and ua
                 # radius = int(np.linalg.norm(np.subtract(kp_ua[:2],kp_gt[:2])))
@@ -184,7 +192,7 @@ def make_pred_image(image, bboxes=None, keypoints=None, keypointsGT=None, keypoi
         for kps in keypoints:
             for kp in kps:
                 overlay = image.copy()
-                overlay = cv2.circle(img=overlay, center=tuple(kp), radius=10, color=dt_color, thickness=cv2.FILLED)#thickness=5)
+                overlay = cv2.circle(img=overlay, center=tuple(kp), radius=10, color=kwargs.get('dt_color'), thickness=cv2.FILLED)#thickness=5)
                 image = cv2.addWeighted(overlay, opaqueness, image, 1 - opaqueness, 0)
                 # FIXME temporarily removed while testing 4corner method
                 # image = cv2.putText(image.copy(), " " + keypoints_classes_ids2names[idx], tuple(kp), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,0,0), 3, cv2.LINE_AA)
@@ -378,7 +386,7 @@ def visualize_cropped_results(model, images, targets, device, num_objects, figsi
         
         images_crops.append(image_crops)
         im_ids.append(im_id)
-        labels_images.append(labels)
+        labels_images.append(mjj)
         scores_images.append(scores)
     if num_objects == 4:
         for idx in range(len(images)):

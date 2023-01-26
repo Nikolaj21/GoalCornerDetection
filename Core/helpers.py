@@ -106,6 +106,7 @@ def test_num_workers(data, batch_size, data_amount=1, pin_memory = False):
         end = time.time()
         print("Finish with:{} second, num_workers={}".format(end - start, num_workers))
 
+@torch.inference_mode()
 def find_pixelerror(model, data_loader, device, num_objects):
     """
     Find distance (error) between ground truth and predictions in pixels, for all corners together and individually
@@ -132,10 +133,9 @@ def find_pixelerror(model, data_loader, device, num_objects):
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         # outputs will be a list of dict of len == batch_size
-        with torch.no_grad():
-            model_time_start = time.time()
-            outputs = model(images)
-            model_time = time.time() - model_time_start
+        model_time_start = time.time()
+        outputs = model(images)
+        model_time = time.time() - model_time_start
         model_times.append(model_time)
         # move outputs to cpu
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
@@ -301,7 +301,7 @@ def make_UA_PCK_curve(GT_loader):
                 if not (obj_UA == obj_UA_fixorder).all():
                     print(f'order changed, id: {target["image_id"]}')
                 # find the distance between every gt and gt for this label, and add to list of distances, along witht the image_id
-                for count,(gt,dt) in enumerate(zip(obj_GT,obj_UA)):
+                for count,(gt,dt) in enumerate(zip(obj_GT,obj_UA_fixorder)):
                     if num_objects == 4:
                         pixelerrors_all.append((target['image_id'].item(), label.item(), np.linalg.norm(dt[:2]-gt[:2])))
                     elif num_objects == 1:

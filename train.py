@@ -51,6 +51,7 @@ def save_model(save_folder, model, loss_dict, type):
 class Params:
     def defaultparams(self):
         self.data_dir = DATA_DIR
+        self.data_dir_test = DATA_DIR_TEST
         self.batch_size = 8
         self.validation_split = 0.25
         self.epochs = 5
@@ -64,7 +65,7 @@ class Params:
         self.project_name = "GoalCornerDetection"
         self.model_name = None
         self.pckthreshup = 200
-        self.predims_every = 5
+        self.predims_every = 10
         self.data_amount = 1
         self.shuffle_dataset = "True"
         self.shuffle_epoch = "False"
@@ -76,6 +77,7 @@ class Params:
         self.bbox_expand = 0.05
         self.bbox_expand_x = self.bbox_expand
         self.bbox_expand_y = self.bbox_expand
+        self.test_on_test_dir = False
 
         self.test_only = False
         self.load_path = "No path"
@@ -95,6 +97,7 @@ def get_args_parser(add_help=True):
     parser = argparse.ArgumentParser(description="PyTorch Keypoint Detection Training", add_help=add_help)
 
     parser.add_argument("--data_dir", default=params.data_dir, type=str, help="dataset directory path")
+    parser.add_argument("--data_dir_test", default=params.data_dir_test, type=str, help="dataset directory path")
     parser.add_argument("-b", "--batch_size", default=params.batch_size, type=int, help="images per gpu, the total batch size is $NGPU x batch_size")
     parser.add_argument("--validation_split", default=params.validation_split, type=float, help="Fraction of the data to use as the validation set (float between 0 and 1)")
     parser.add_argument("--epochs", default=params.epochs, type=int, metavar="N", help="number of total epochs to run")
@@ -120,7 +123,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--bbox_expand_x", default=params.bbox_expand_x, type=float, help="relative width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
     parser.add_argument("--bbox_expand_y", default=params.bbox_expand_y, type=float, help="relative height (y) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
     parser.add_argument("--bbox_expand", default=params.bbox_expand_y, type=float, help="relative height (y) and width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
-
+    parser.add_argument("--test_on_test_dir", default=params.test_on_test_dir, choices=('True','False'), help="Whether to test model on test set, when test_only=True. Default: False")
 
     parser.add_argument("--test_only", dest="test_only", action="store_true", help="If option is set, the script will only test the model")
     parser.add_argument("--load_path", default=params.load_path, type=str, help="path to load model checkpoint from. Must be present if --test-only is used")
@@ -135,6 +138,7 @@ def main(config=params):
     config.shuffle_dataset = bool(strtobool(config.shuffle_dataset))
     config.shuffle_epoch = bool(strtobool(config.shuffle_epoch))
     config.filter_data = bool(strtobool(config.filter_data))
+    config.test_on_test_dir = bool(strtobool(config.test_on_test_dir))
     # set wandb api key as environment variable
     export_wandb_api()
     # initialize wandb run
@@ -235,6 +239,8 @@ def main(config=params):
     # list of possible aspect_ratios to use, due to different models being trained on different number of aspect_ratios
     aspect_ratios_all = (4208/3120, 1.0, 2.0, 2.5, 3.0, 0.5, 4.0)
     # aspect_ratios_all = (1.2, 1.7, 2.4, 2.6, 3.0) # test aspect_ratios
+
+    
     if args.test_only:
         torch.backends.cudnn.deterministic = True
         # finds the number of aspect ratios used from the state_dict if loading a previously trained model
@@ -242,17 +248,22 @@ def main(config=params):
         number_aspect_ratios = len(state_dict.get('rpn.head.cls_logits.bias'))
         aspect_ratios_anchors = (aspect_ratios_all[:number_aspect_ratios], ) * len(anchor_sizes)
         
-        # make dataloader for test set (when testing, should input test dataset as args.data_dir if you want to test on test set, not validation set)
-        # GoalData_test = DataClass(DATA_DIR_TEST, transforms=None, filter_data=args.filter_data, config=args)
-        # my functions expect a dataloader defined from a torch.utils.data.Subset
-        indices = list(range(len(GoalData_val)))
-        GoalData_subset = torch.utils.data.Subset(GoalData_val,indices)
-        test_loader = torch.utils.data.DataLoader(GoalData_subset,
-                                                   batch_size=args.batch_size,
-                                                   collate_fn=collate_fn, 
-                                                   num_workers=args.workers, 
-                                                   pin_memory=False, 
-                                                   shuffle=args.shuffle_epoch)
+        if args.test_on_test_dir:
+            # make dataloader for test set
+            # my functions expect a dataloader defined from a torch.utils.data.Subset
+            print(f'Testing on test dir...which is\n{args.data_dir_test}')
+            GoalData_test = DataClass(args.data_dir_test, transforms=None, filter_data=args.filter_data, config=args)
+            indices = list(range(len(GoalData_test)))
+            print(f'len of indices: {len(indices)}')
+            GoalData_subset = torch.utils.data.Subset(GoalData_test,indices)
+            test_loader = torch.utils.data.DataLoader(GoalData_subset,
+                                                    batch_size=args.batch_size,
+                                                    collate_fn=collate_fn, 
+                                                    num_workers=args.workers, 
+                                                    pin_memory=False, 
+                                                    shuffle=args.shuffle_epoch)
+        else:
+            test_loader = validation_loader
         # load model
         anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
         model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator)
@@ -271,15 +282,17 @@ def main(config=params):
         print(f'Model has been tested!')
 
         # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
-        # evaluate(model, validation_loader, device)
+        evaluate(model, test_loader, device)
         return
 
-    else: # make an anchor generator with 3 aspect_ratios (1 for now) (for 1box: all for now)
-        # which aspect ratios to use for every anchor size. Assumes aspect_ratio = height / width
+    else: # make an anchor generator with defined number of aspect_ratios
+        # which aspect ratios to use for every anchor size. Assumes aspect_ratio = width / height
         aspect_ratios_anchors = (aspect_ratios_all[:num_aspect_ratios], ) * len(anchor_sizes)
     print(f'aspect_ratios: {aspect_ratios_anchors}')
+
+
     anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
-    model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator)
+    model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator,max_size=500)
     model.to(device)
     print(f'Model moved to device: {device}')
     params = [p for p in model.parameters() if p.requires_grad]

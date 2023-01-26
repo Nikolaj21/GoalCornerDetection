@@ -210,7 +210,7 @@ class GoalCalibrationDataset(Dataset):
             'area': (bboxes_tensor[:, 3] - bboxes_tensor[:, 1]) * (bboxes_tensor[:, 2] - bboxes_tensor[:, 0]),
             'iscrowd': torch.zeros(len(bboxes), dtype=torch.int64),
             'old_image_id': torch.tensor((self.old_idxs[idx])),
-            'keypoints_ua': keypoints_ua_tensor[None,:,:]
+            'keypoints_ua': keypoints_ua_tensor[None,:]
         }
 
         return img_tensor,target_dict
