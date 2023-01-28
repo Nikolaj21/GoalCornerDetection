@@ -3,19 +3,14 @@ matplotlib
 opencv-python
 cython
 numba
-scipy
-tqdm
-pycocotools
 torchinfo
 
 
 # conda requirements for conda environment gcdhpc
 conda create --name gcd python=3.9.13 # initial making of conda environment
 conda install -c pytorch pytorch torchvision cudatoolkit=11.3
-# conda install jupyter # original install of jupyter
-conda install -c conda-forge jupyter
+conda install -c conda-forge jupyter ipywidgets pycocotools albumentations wandb jupyterthemes
 # also run jupyter notebook password if you just installed jupyter and set a password
 
-conda install tqdm cffi h5py scipy pytz imageio seaborn
-conda install -c conda-forge pycocotools albumentations wandb jupyterthemes
+conda install tqdm cffi h5py scipy pytz imageio
 conda install -c anaconda scikit-learn pandas pyyaml

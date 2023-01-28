@@ -77,7 +77,7 @@ class Params:
         self.bbox_expand = 0.05
         self.bbox_expand_x = self.bbox_expand
         self.bbox_expand_y = self.bbox_expand
-        self.test_on_test_dir = False
+        self.test_on_test_dir = 'False'
 
         self.test_only = False
         self.load_path = "No path"
@@ -238,8 +238,6 @@ def main(config=params):
     print(f'image shape: {GoalData_train[0][0].shape}')
     # list of possible aspect_ratios to use, due to different models being trained on different number of aspect_ratios
     aspect_ratios_all = (4208/3120, 1.0, 2.0, 2.5, 3.0, 0.5, 4.0)
-    # aspect_ratios_all = (1.2, 1.7, 2.4, 2.6, 3.0) # test aspect_ratios
-
     
     if args.test_only:
         torch.backends.cudnn.deterministic = True
@@ -251,9 +249,9 @@ def main(config=params):
         if args.test_on_test_dir:
             # make dataloader for test set
             # my functions expect a dataloader defined from a torch.utils.data.Subset
-            print(f'Testing on test dir...which is\n{args.data_dir_test}')
+            print(f'Testing on test dir...which is...\n{args.data_dir_test}')
             GoalData_test = DataClass(args.data_dir_test, transforms=None, filter_data=args.filter_data, config=args)
-            indices = list(range(len(GoalData_test)))
+            indices = list(range(len(GoalData_test)))[:188]
             print(f'len of indices: {len(indices)}')
             GoalData_subset = torch.utils.data.Subset(GoalData_test,indices)
             test_loader = torch.utils.data.DataLoader(GoalData_subset,
@@ -290,9 +288,13 @@ def main(config=params):
         aspect_ratios_anchors = (aspect_ratios_all[:num_aspect_ratios], ) * len(anchor_sizes)
     print(f'aspect_ratios: {aspect_ratios_anchors}')
 
-
+    image_mean = [0.440, 0.454, 0.431] # calculated from the dataset, mean rgb value for all images
+    image_std = [0.298, 0.298, 0.332] # calculated from the dataset, mean std of rgb value for all images
     anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
-    model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator,max_size=500)
+    model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator,
+                                      image_mean=image_mean, image_std=image_std)
+    print(f'min_sizes: {model.transform.min_size}\nmax_size: {model.transform.max_size}')
+    print(f'size of image after transforms: {model.transform([GoalData_val[0][0]])[0].tensors.shape}')
     model.to(device)
     print(f'Model moved to device: {device}')
     params = [p for p in model.parameters() if p.requires_grad]
