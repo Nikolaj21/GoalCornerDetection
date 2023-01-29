@@ -75,8 +75,6 @@ class Params:
         self.filter_data = 'True'
         self.wandb_dir = '/zhome/60/1/118435/Master_Thesis/Scratch/s163848/'
         self.bbox_expand = 0.05
-        self.bbox_expand_x = self.bbox_expand
-        self.bbox_expand_y = self.bbox_expand
         self.test_on_test_dir = 'False'
 
         self.test_only = False
@@ -120,9 +118,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--model_type", default=params.model_type, choices=('1boxOLD','1box','4box'), help="Changes which type of model is run. Affects which dataloader is called and some parameters of the model. Default: 4box")
     parser.add_argument("--filter_data", default=params.filter_data, choices=('True','False'), help="Shuffle which data ends up in train set and validation set. Default: True")
     parser.add_argument("--wandb_dir", default=params.wandb_dir, type=str, help="Directory in which to make wandb folder for storing data from runs.")
-    parser.add_argument("--bbox_expand_x", default=params.bbox_expand_x, type=float, help="relative width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
-    parser.add_argument("--bbox_expand_y", default=params.bbox_expand_y, type=float, help="relative height (y) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
-    parser.add_argument("--bbox_expand", default=params.bbox_expand_y, type=float, help="relative height (y) and width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
+    parser.add_argument("--bbox_expand", default=params.bbox_expand, type=float, help="relative height (y) and width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
     parser.add_argument("--test_on_test_dir", default=params.test_on_test_dir, choices=('True','False'), help="Whether to test model on test set, when test_only=True. Default: False")
 
     parser.add_argument("--test_only", dest="test_only", action="store_true", help="If option is set, the script will only test the model")
@@ -251,7 +247,7 @@ def main(config=params):
             # my functions expect a dataloader defined from a torch.utils.data.Subset
             print(f'Testing on test dir...which is...\n{args.data_dir_test}')
             GoalData_test = DataClass(args.data_dir_test, transforms=None, filter_data=args.filter_data, config=args)
-            indices = list(range(len(GoalData_test)))[:188]
+            indices = list(range(len(GoalData_test)))[:188] #Take the first 188 elements after filtering, to match with validation set size
             print(f'len of indices: {len(indices)}')
             GoalData_subset = torch.utils.data.Subset(GoalData_test,indices)
             test_loader = torch.utils.data.DataLoader(GoalData_subset,
@@ -277,6 +273,9 @@ def main(config=params):
         # Find the outliers in predictions and log them
         outliertable = prediction_outliers(pixelerrors, model, test_loader, num_objects, device)
         wandb.log({"outliers_table": outliertable})
+        
+        # log mean error
+        wandb.log({"mean_error_all": outliertable.get_column("mean",convert_to="numpy")[0]})
         print(f'Model has been tested!')
 
         # get evaluation metrics, average precison and average recall for different IoUs or OKS thresholds
@@ -420,7 +419,7 @@ def main(config=params):
     # Find the outliers in predictions and log them
     outliertable = prediction_outliers(pixelerrors, model, validation_loader, num_objects, device)
     wandb.log({"outliers_table": outliertable})
-    # log mean error for sweep purpose
+    # log mean error
     wandb.log({"mean_error_all": outliertable.get_column("mean",convert_to="numpy")[0]})
 
     wandb.finish()
