@@ -293,8 +293,6 @@ def make_UA_PCK_curve(GT_loader):
     for _,targets in tqdm(GT_loader):
         # extract the euclidean distance error (in pixels) between every ground-truth and detection keypoint in the batch. Also return image_ids and labels for every distance measure for reference
         for target in targets:
-            label_to_gts = {}
-            label_to_dts = {}
             # make a dictionary for the gts and dts in every target and output that save the label, keypoints and scores, for later sorting
             for label,obj_GT,obj_UA in zip(target['labels'],target['keypoints'],target['keypoints_ua']):
                 obj_UA_fixorder = order_keypoints_torch(obj_UA)
