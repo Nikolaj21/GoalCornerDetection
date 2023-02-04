@@ -6,8 +6,10 @@ from tqdm import tqdm
 import time
 import datetime
 # from collections import deque
-import wandb
+# import wandb
 from collections import defaultdict
+from pathlib import Path
+import json
 
 # helper / utility functions
 
@@ -335,3 +337,81 @@ def make_UA_PCK_curve(GT_loader):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f'Total time: {total_time_str} ({total_time/len(thresholds):.4f} s / threshold)')
     return PCK,pixelerrors
+
+
+@torch.inference_mode()
+def save_predictions(model, data_loader, device, num_objects, save_folder, model_name):
+    """
+    Extract predictions from model, and save in a json file
+    Parameters:
+        model: a neural network made using pytorch
+        data_loader: a pytorch dataloader object
+        device: device on which to run data through model. Either torch.device('cuda') or torch.device('cpu')
+        num_objects: the number of objects in every gt image. (only supports 1 or 4)
+    Returns:
+        pixelerrors: a dict of all the pixel errors for every point in different categories.
+    """
+    assert num_objects==1 or num_objects==4,f"num_objects should either be 1 or 4, but {num_objects} was given!"
+    # get a reference of file names from the im_ids
+    id_to_file = {idx: path.split('/')[-1].split('.json')[0]
+              for idx, path in enumerate(data_loader.dataset.dataset.annotation_list_filtered)}
+    
+    model.eval()
+    model.to(device)
+    cpu_device = torch.device("cpu")
+    # save pixelerrors as a deque list, which is faster at appending than a normal list
+    predictions_all = {}
+    model_times = []
+    print(f'Finding pixelerror for all predictions...')
+    start_time = time.time()
+    # Run through all images and get the pixel distance (error) between predictions and ground-truth
+    for images, targets in tqdm(data_loader,total=len(data_loader)):
+        images = list(image.to(device) for image in images)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        # outputs will be a list of dict of len == batch_size
+        model_time_start = time.time()
+        outputs = model(images)
+        model_time = time.time() - model_time_start
+        model_times.append(model_time)
+        # move outputs to cpu
+        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+
+        # get predictions and add to dict along with image_id
+        for target, output in zip(targets, outputs):
+            im_id = target['image_id'].item()
+            label_to_dts = defaultdict(list)
+            # make a dictionary for the dts in every target and output that saves the label, keypoints and scores, for later sorting
+            for label,obj_kp,score in zip(output['labels'],output['keypoints'],output['scores']):
+                label_to_dts[label.item()].append((obj_kp,score.item()))
+            # compare the gt and dt of every object with the same label, taking only the highest scored one
+            pred_points = []
+            all_points_success = True
+            for label in range(1,num_objects+1):
+                # get the obj_dt for this label (obj_dt may not exist)
+                obj_dt = label_to_dts.get(label)
+                # if there are any predictions with this label
+                if not obj_dt == None:
+                    # take the set of keypoints with the highest score
+                    obj_dt = sorted(obj_dt, key=lambda tup_kp_and_score: tup_kp_and_score[1], reverse=True)[0][0]
+                    # Add dt to dict
+                    for dt in obj_dt:
+                        if num_objects == 1:
+                            pred_points.append(dt[:2].tolist())
+                        elif num_objects == 4:
+                            pred_points.append(dt[:2].tolist())
+                else: # the label is missing, print info
+                    print(f'Missing prediction in image {im_id}, with label {label}. Ignoring..')
+                    all_points_success = False
+            if all_points_success:
+                predictions_all[id_to_file[im_id]] = pred_points
+
+
+    with open(str(Path(save_folder + f'/predictions_{model_name}.json')),'w') as f:
+        json.dump(predictions_all,f, indent=4)
+
+    total_time = time.time() - start_time
+    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+    print(f'Total time: {total_time_str}')
+    print(f'Average model time: {np.mean(model_times)} s\nMedian model time: {np.median(model_times)}')
+    return predictions_all

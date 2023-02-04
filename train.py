@@ -270,6 +270,7 @@ def main(config=params):
         # Evaluate PCK for all the keypoints
         thresholds=np.arange(1,args.pckthreshup+1)
         PCK,pixelerrors = eval_PCK(model,test_loader,device,thresholds=thresholds, num_objects=num_objects)
+        
         # Log the PCK values in wandb
         PCK_plot_objects = make_PCK_plot_objects(PCK,thresholds)
         wandb.log(PCK_plot_objects)
