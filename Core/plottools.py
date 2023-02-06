@@ -386,7 +386,7 @@ def visualize_cropped_results(model, images, targets, device, num_objects, figsi
         
         images_crops.append(image_crops)
         im_ids.append(im_id)
-        labels_images.append(mjj)
+        labels_images.append(labels)
         scores_images.append(scores)
     if num_objects == 4:
         for idx in range(len(images)):

@@ -20,6 +20,7 @@ import importlib
 import time
 from pathlib import Path
 from distutils.util import strtobool
+from torchvision.ops import MultiScaleRoIAlign
 
 
 def save_model(save_folder, model, loss_dict, type):
@@ -76,6 +77,7 @@ class Params:
         self.wandb_dir = '/zhome/60/1/118435/Master_Thesis/Scratch/s163848/'
         self.bbox_expand = 0.05
         self.test_on_test_dir = 'False'
+        self.canonical_level = 224
 
         self.test_only = False
         self.load_path = "No path"
@@ -120,6 +122,8 @@ def get_args_parser(add_help=True):
     parser.add_argument("--wandb_dir", default=params.wandb_dir, type=str, help="Directory in which to make wandb folder for storing data from runs.")
     parser.add_argument("--bbox_expand", default=params.bbox_expand, type=float, help="relative height (y) and width (x) of the gt bounding boxes in relation to the image dimensions. float [0,1]")
     parser.add_argument("--test_on_test_dir", default=params.test_on_test_dir, choices=('True','False'), help="Whether to test model on test set, when test_only=True. Default: False")
+    parser.add_argument("--canonical_level", default=params.canonical_level, type=int, help="The scaling size for the mapping from region proposal to level of feature map. From eq. 1 in `Feature Pyramid Network paper <https://arxiv.org/abs/1612.03144>`. Default: 224")
+
 
     parser.add_argument("--test_only", dest="test_only", action="store_true", help="If option is set, the script will only test the model")
     parser.add_argument("--load_path", default=params.load_path, type=str, help="path to load model checkpoint from. Must be present if --test-only is used")
@@ -289,9 +293,10 @@ def main(config=params):
 
     image_mean = [0.440, 0.454, 0.431] # calculated from the dataset, mean rgb value for all images
     image_std = [0.298, 0.298, 0.332] # calculated from the dataset, mean std of rgb value for all images
+    keypoint_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=2, canonical_scale=args.canonical_level)
     anchor_generator = AnchorGenerator(sizes=anchor_sizes, aspect_ratios=aspect_ratios_anchors)
     model = keypointrcnn_resnet50_fpn(weights=None, progress=True, num_classes=num_classes, num_keypoints=num_keypoints,rpn_anchor_generator=anchor_generator,
-                                      image_mean=image_mean, image_std=image_std)
+                                      image_mean=image_mean, image_std=image_std, keypoint_roi_pool=keypoint_roi_pool)
     print(f'min_sizes: {model.transform.min_size}\nmax_size: {model.transform.max_size}')
     print(f'size of image after transforms: {model.transform([GoalData_val[0][0]])[0].tensors.shape}')
     model.to(device)
@@ -427,42 +432,6 @@ def main(config=params):
 
 def test(args=None):
     # This is just a test function
-    if not args:
-        print('\n#########################args is None\n#########################')
-    import yaml
-    import random
-    def train_one_epoch(epoch, lr, bs): 
-        acc = 0.25 + ((epoch/30) +  (random.random()/10))
-        loss = 0.2 + (1 - ((epoch-1)/10 +  random.random()/5))
-        return acc, loss
-
-    def evaluate_one_epoch(epoch): 
-        acc = 0.1 + ((epoch/20) +  (random.random()/10))
-        loss = 0.25 + (1 - ((epoch-1)/10 +  random.random()/6))
-        return acc, loss
-
-    # with open('./testsweep.yaml','r') as file:
-    #     config = yaml.load(file,Loader=yaml.FullLoader)
-    run = wandb.init()
-
-    # note that we define values from `wandb.config` instead 
-    # of defining hard values
-    lr  =  wandb.config.lr
-    bs = wandb.config.batch_size
-    epochs = wandb.config.epochs
-
-    for epoch in np.arange(1, epochs):
-        train_acc, train_loss = train_one_epoch(epoch, lr, bs)
-        val_acc, val_loss = evaluate_one_epoch(epoch)
-
-    wandb.log({
-        'epoch': epoch, 
-        'train_acc': train_acc,
-        'train_loss': train_loss, 
-        'val_acc': val_acc, 
-        'val_loss': val_loss
-    })
-
     return 
 
 if __name__ == '__main__':
