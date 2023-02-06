@@ -277,12 +277,23 @@ def test_model_time():
     for cat,mse in mse_dict.items():
         print(f'MSE_loss_{cat}: {mse}')
 
+def test_3D_error_fun():
+    from Core.helpers import find_error_3D
+
+    gt_path = r"C:\Users\Nikolaj\OneDrive - Danmarks Tekniske Universitet\DTU\Kandidat\MasterThesis\VisionDevelopment\Data_3D_calibrate\3D_points\ground_truth_trainval\reproj_results.json"
+    dt_path = r"C:\Users\Nikolaj\OneDrive - Danmarks Tekniske Universitet\DTU\Kandidat\MasterThesis\VisionDevelopment\Data_3D_calibrate\3D_points\model1_val\reproj_results.json"
+    
+    errors = find_error_3D(gt_path,dt_path)
+
+    print('done')
+
 def main():
     # testPCK()
     # test_dataloader_speed()
     # test_paths()
     # test_wandb_init()
-    test_model_time()
+    # test_model_time()
+    test_3D_error_fun()
 
 if __name__ == "__main__":
     main()

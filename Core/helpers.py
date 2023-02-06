@@ -415,3 +415,55 @@ def save_predictions(model, data_loader, device, num_objects, save_folder, model
     print(f'Total time: {total_time_str}')
     print(f'Average model time: {np.mean(model_times)} s\nMedian model time: {np.median(model_times)}')
     return predictions_all
+
+
+def find_error_3D(gt_path, dt_path):
+    '''
+    Find the error between every ground-truth and prediction point in 3D
+    Args:
+        gt_path: a directory pointing to a json file with the 3D ground-truth (gt) points
+        dt_path: a directory pointing to a json file with the 3D detection (dt) points
+    Return:
+        A dict containing the error for every point
+    '''
+    gts_all = json.load(open(gt_path,'r'))
+    dts_all = json.load(open(dt_path,'r'))
+
+    ignored_gt = gts_all.get('ignored_measurements')
+    gts_all.pop('ignored_measurements')
+    ignored_dt = dts_all.get('ignored_measurements')
+    dts_all.pop('ignored_measurements')
+
+    print(f'Number of items in gt: {len(gts_all)}')
+    print(f'Number of items in dt: {len(dts_all)}')
+    
+    failed = []
+    errors_all = []
+    for filename, dts in tqdm(dts_all.items(),total=len(dts_all)):
+        gts = gts_all.get(filename)
+        if gts is not None: # find 3D error for all corner points
+            gts = np.array(gts)
+            dts = np.array(dts)
+            for label, (gt,dt) in enumerate(zip(gts,dts)):
+                errors_all.append((filename, label+1, np.linalg.norm(dt-gt)))
+        else: # move on to next image, save id for later
+            print(f'Failed with file: {filename}, moving on to next..')
+            failed.append(filename)
+
+    TL_label,TR_label,BL_label,BR_label = 1,2,3,4
+    errors_TL = [errors_all[i] for i,(_,label,_) in enumerate(errors_all) if label==TL_label]
+    errors_TR = [errors_all[i] for i,(_,label,_) in enumerate(errors_all) if label==TR_label]
+    errors_BL = [errors_all[i] for i,(_,label,_) in enumerate(errors_all) if label==BL_label]
+    errors_BR = [errors_all[i] for i,(_,label,_) in enumerate(errors_all) if label==BR_label]
+    errors_dict = {
+        "all":errors_all,
+        "TL":errors_TL,
+        "TR":errors_TR,
+        "BL":errors_BL,
+        "BR":errors_BR
+        }
+    for cat,metrics in errors_dict.items():
+        _,_,errors = zip(*metrics)
+        mean = np.mean(errors)
+        print(f'MAE_{cat}: {mean}')
+    return errors_dict
