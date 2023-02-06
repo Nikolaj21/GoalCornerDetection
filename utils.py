@@ -7,5 +7,4 @@ DATA_DIR_TEST = '/zhome/60/1/118435/Master_Thesis/Scratch/s163848/Data_test'
 
 def export_wandb_api():
     os.environ['WANDB_API_KEY'] = open('wandb_api.txt','r').read()
-    print(os.environ['WANDB_API_KEY'])
     return print("# Wandb api key successfully exported to environment #")
